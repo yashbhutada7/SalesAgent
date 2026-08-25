@@ -60,6 +60,78 @@ the sender node binds to it by ID.
 - n8n Cloud usually provides a pre-registered app, so steps 3–6 are often all that is
   needed.
 
+
+### ⚠️ "Needs permission to access resources in your organization that only an admin can grant"
+
+This is an Entra (Azure AD) tenant restriction: your organization blocks users from
+consenting to third-party apps. An admin must approve n8n once, tenant-wide.
+
+**Option 1 — Admin signs in and consents (easiest)**
+
+A Global Administrator (or Cloud Application Administrator / Privileged Role
+Administrator) performs the n8n connect flow themselves:
+
+1. n8n → Credentials → Microsoft Outlook OAuth2 API → **Connect my account**
+2. Sign in **as the admin**
+3. Tick **"Consent on behalf of your organization"** on the consent screen
+4. **Accept**
+
+That checkbox is the entire fix. Afterwards any user in the tenant can connect.
+
+**Option 2 — Entra admin center**
+
+1. https://entra.microsoft.com → sign in as Global Admin
+2. **Identity → Applications → Enterprise applications**
+3. Search **n8n** → open it
+4. **Security → Permissions → Grant admin consent for \<org\>**
+
+If n8n is not listed, it has never been consented and the service principal does not
+exist yet — use Option 1 or 3.
+
+**Option 3 — Direct admin-consent URL**
+
+```
+https://login.microsoftonline.com/<tenant-id>/adminconsent?client_id=<app-id>
+```
+
+The `client_id` is present in the failed sign-in URL / error message. The admin opens
+this link and approves once.
+
+**Recommended:** Entra → Enterprise applications → **Admin consent requests** → enable
+the request workflow, so future blocks file an approvable request instead of a dead end.
+
+---
+
+## 4. Sending from a different email address
+
+Verified against `n8n-nodes-base.microsoftOutlook` v2 (`message:send`). The node supports
+three auth types — `microsoftOutlookOAuth2Api`, `microsoftOAuth2Api`,
+`microsoftEntraServicePrincipalApi` — and exposes `additionalFields.from`
+("The owner of the mailbox from which the message is sent. Must correspond to the actual
+mailbox used") plus `replyTo`.
+
+### Route 1 — Delegated + Send As (recommended)
+
+`from` is enforced by Microsoft: real permission on that mailbox is required.
+
+1. https://admin.exchange.microsoft.com → **Recipients → Mailboxes**
+2. Select the mailbox to send *from* (e.g. a shared `bd@grandeuradvisory.com`)
+3. **Delegation → Send as → Add** → add the account n8n authenticates as
+4. Set `from` to that address in the send node
+
+**Simplest variant:** create the n8n credential while signed in **as the account you want
+to send from**. One credential = one mailbox, no delegation required.
+
+### Route 2 — App-only (Entra Service Principal)
+
+With `microsoftEntraServicePrincipalApi`, the node exposes a **`mailbox`** resource
+locator that can target a different mailbox **per input item**. Requires an app
+registration with **`Mail.Send` application permission**.
+
+⚠️ By default this permits sending as **any mailbox in the tenant**. Scope it with an
+`ApplicationAccessPolicy` in Exchange Online PowerShell restricting the app to specific
+mailboxes. Overkill until outreach genuinely sends from many addresses.
+
 ---
 
 ## Current status
