@@ -383,3 +383,82 @@ it start sending real email on a schedule — an owner decision, never an automa
 - [ ] Signals + Sources writes
 - [ ] Response Management (inbound email trigger → classify intent)
 - [ ] Follow-up scheduling (`Follow-Up Date` / `Follow-Up Plan` columns exist, unused)
+
+---
+
+## 2026-08-25 — First real send ✅ + three bugs found in the execution data
+
+Owner ran the sender and **received the email**. Confirmed working: Outlook send,
+delegated `from: accounting@grandeuradvisory.com`, and `Mark Outreach Sent`
+(`Outreach Status = Sent`, `Draft Status = Sent`).
+
+Initial runs (75, 76) sent nothing — root cause was **Excel table boundaries**, not the
+workflow: `Get Outreach Rows` returned zero rows and `Get Contacts` returned an all-blank
+row, because the manually typed data sat outside the table ranges. Resolved by seeding
+via `table: append` (workflow `Grandeur BD Agent - Seed Test Data`, `7dN9nrQnhEm1HXbE`),
+which always writes inside the range.
+
+Inspecting execution 78 surfaced three genuine defects:
+
+### 🔴 1. Excel strips leading zeros from IDs
+
+Queue showed `"Outreach ID": "1"`, `"Opportunity ID": "1"`, `"Contact ID": "1"` — not
+`001`. Excel parses `001` as the number 1. (`Grand 001` survived: letters force text.)
+Breaks both the agreed ID format and any string comparison.
+
+**Fix:** an `idKey()` canonicaliser in both `Build Send Queue` and
+`Check Outreach Eligibility` — pure-digit values collapse to their integer form, so
+`"001"`, `"1"` and `1` all match. Matching is now format-independent.
+
+**Owner option (for display):** format `Opportunity ID`, `Contact ID` and `Outreach ID`
+columns as **Text** in Excel *before* data lands, to preserve the padded `001` look.
+Matching works either way.
+
+### 🔴 2. Excel returns dates as serial numbers — this silently disabled the 30-day gate
+
+`Sent Date` came back as `46259`, not `2026-08-25`. The original code did
+`new Date(value)`, which reads 46259 as 46 seconds past epoch → 1970. **The 30-day
+re-engagement gate would never have fired**, and the 72-hour freshness check was equally
+unreliable.
+
+**Fix:** a `toDate()` helper that detects Excel serials (numeric, 20000–90000) and
+converts via `(serial - 25569) * 86400000`, falling back to normal date parsing.
+Applied to both `Last Verified` and `Sent Date`.
+
+This is the most consequential bug found so far — it was invisible because the gate
+failed *open* on the freshness side and *closed* on nothing.
+
+### 🟠 3. Blank row inserted into Opportunities
+
+`Stamp Opportunity Last Outreach` found no Opportunity matching `001` (the existing
+Opportunities row predates the dedup build and has an empty ID), and the `upsert`
+therefore **inserted a blank row**. Owner to delete it. Will not recur once the research
+workflow runs with `Assign Opportunity ID` in place.
+
+### Also fixed: contacts-source defect (previously flagged)
+
+`Check Outreach Eligibility` read contacts only from the current run's
+`Assign Contact IDs` output, so outreach was skipped whenever discovery found nobody new
+— even with good contacts already in the sheet.
+
+**Fix:** new **`Get Company Contacts`** node reads `tblContacts`; eligibility filters it
+by Company ID and selects Primary → Backup → any usable contact. The outreach branch is
+now sourced from `Assign Opportunity ID` rather than `Upsert Contact`, so it evaluates
+even when contact discovery returns zero items. Adds `Contacts Found For Company` to the
+output for debugging.
+
+**Design consequence:** for a brand-new company, contacts discovered in the same run may
+not yet be readable when outreach evaluates, so outreach happens on the *next* pass.
+Acceptable — and arguably healthier, since it puts a cycle between discovery and contact.
+
+### Wiring now
+
+```
+Assign Opportunity ID
+  ├→ Upsert Opportunity                                        → Opportunities
+  ├→ Contact Research AI → Get Existing Contacts
+  │    → Assign Contact IDs → Upsert Contact                   → Contacts
+  └→ Get Company Contacts → Get Outreach History
+       → Check Outreach Eligibility → Eligible?
+            └─(true)→ Outreach Draft AI → Build Outreach Row → Upsert Outreach
+```
