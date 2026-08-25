@@ -231,3 +231,85 @@ require a real company website.
 - [ ] 72h freshness filter (`Last Verified`) + 30-day gate (`max(Sent Date)` per Opportunity ID)
 - [ ] Sender workflow: scheduled → `Approved` + no `Sent Date` → Outlook send → stamp `Sent Date`
 - [ ] Owner: `Subject` column on Outreach, `Last Outreach Date` on Opportunities, Outlook credential
+
+---
+
+## 2026-08-25 — Outreach drafting chain (built, not executed, not published)
+
+### Nodes added
+
+**`Get Outreach History`** (Excel table `getRows` on Outreach/`Table6`, `returnAll`,
+`alwaysOutputData`, `executeOnce`)
+
+**`Check Outreach Eligibility`** (Code) — all four business rules in one gate:
+
+| Rule | Constant | Behaviour |
+|---|---|---|
+| Contactable decision maker | — | prefers `Primary Decision-Maker = Yes` with a non-empty `Email`; falls back to any contact with an email; skips anyone flagged `Do Not Contact = Yes` |
+| Opportunity quality | `MIN_SCORE = 50` | below 50 → not eligible |
+| **72-hour freshness** | `FRESH_HOURS = 72` | `Last Verified` must be within 72h |
+| **30-day re-engagement** | `REENGAGE_DAYS = 30` | `max(Sent Date)` for this Opportunity ID must be ≥30 days ago |
+| Duplicate-draft guard | — | blocks if a Pending Approval draft with no `Sent Date` already exists |
+
+Outputs `Eligible` (bool) plus a human-readable `Ineligible Reason`, and carries the
+contact/company/opportunity context forward. It deliberately emits **one item either
+way** rather than an empty list, so the reason is visible in the n8n UI when nothing
+gets drafted — much easier to debug than a silent skip.
+
+**`Eligible?`** (IF v2.3) — true branch only. False branch intentionally unwired: an
+ineligible opportunity stops there without burning an OpenAI call.
+
+**`Outreach Draft AI`** (OpenAI v2.3, no web search — writes only from verified input)
+
+Prompt design:
+- **Subject derived from the body**, as requested: the prompt instructs writing the body
+  first, then a subject that honestly describes what the body actually says
+- Subject rules: 4–8 words, references the specific signal or service, sentence case,
+  no clickbait/fake urgency/`Re:` tricks, no spam trigger words (free, guarantee, act
+  now, limited time, urgent, offer, discount, cheap, risk-free), no emojis, no
+  exclamation marks, must make sense to someone who has never heard of Grandeur
+- Body rules: 90–130 words, plain and human, opens on the actual verified signal,
+  concrete about the service, low-friction close, no bullets/headers/emojis, no
+  signature (sender adds it)
+- Banned filler: "I hope this email finds you well", "reaching out", "circle back",
+  "touch base", "synergy", "game-changer", "revolutionary", "just following up",
+  "quick question"
+- Anti-fabrication: no invented facts, systems, case studies, client names, statistics
+  or promised outcomes; no naming other Grandeur clients; thin evidence → write shorter,
+  never pad with invention
+
+**`Build Outreach Row`** (Code) — parses the draft, assigns a sequential `Outreach ID`
+(`001`, `002` …), sets `Approval Status = Pending Approval`, `Draft Status = Drafted`,
+`Outreach Status = Draft`, `Channel = Email`, records recipient + signal in `Notes`.
+Returns zero items if subject or body came back empty, so a malformed draft never
+reaches Excel.
+
+**`Upsert Outreach`** (Excel worksheet upsert on Outreach, match `Outreach ID`, auto-map)
+
+### Wiring
+
+```
+Upsert Contact → Get Outreach History → Check Outreach Eligibility → Eligible?
+  └─(true)→ Outreach Draft AI → Build Outreach Row → Upsert Outreach → Outreach
+```
+
+### Forward-compatible with the missing columns
+
+`Subject` (Outreach) and `Last Outreach Date` (Opportunities) do not exist yet. Excel
+auto-map ignores keys with no matching header, so the workflow runs fine and simply
+drops those values. They begin persisting the moment the owner adds the headers —
+no workflow change needed. See `docs/OWNER_SETUP.md`.
+
+### Tunable constants
+
+`MIN_SCORE = 50`, `FRESH_HOURS = 72`, `REENGAGE_DAYS = 30` are declared at the top of
+`Check Outreach Eligibility` — single place to change any threshold.
+
+### Next build items
+
+- [ ] Suppression check (Clients / Competitors / Suppression sheets have no tables yet)
+- [ ] Sender workflow: Schedule → read `Approval Status = Approved` + empty `Sent Date`
+      → Outlook send → stamp `Sent Date`, `Outreach Status = Sent`, and
+      `Last Outreach Date` on the Opportunity
+- [ ] Signals + Sources writes
+- [ ] Owner: `Subject` column, `Last Outreach Date` column, Outlook credential
