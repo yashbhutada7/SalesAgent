@@ -94,3 +94,65 @@ Normalize Research Output
 - [ ] 72h freshness filter + 30-day re-engagement gate
 - [ ] Signals + Sources writes
 - [ ] Suppression check, then outreach draft → approve → Outlook send
+
+---
+
+## 2026-08-25 — Opportunity dedup twin (built, not executed, not published)
+
+### Verified before building
+
+Owner added the **`Company Key`** column — Companies now has 40 columns and the
+`Finance Team Size` / `ERP` headers read correctly (typo fix confirmed live).
+Opportunities confirmed at exactly the 22 expected columns.
+
+### Changes applied
+
+**New — `Get Existing Opportunities`** (Excel, table `getRows`, `returnAll: true`,
+`alwaysOutputData: true`, `executeOnce: true`)
+
+**New — `Assign Opportunity ID`** (Code, `runOnceForAllItems`)
+- match key = `Company ID` + `Opportunity Type` (both normalized: trimmed, lowercased,
+  whitespace collapsed)
+- **match →** reuse existing `Opportunity ID`, preserve original `First Detected`
+- **no match →** `max(trailing number) + 1` → `001`, `002` … widening past `999`
+- stamps `Last Verified` = today, sets `Is New Opportunity`
+- empty `Opportunity Type` (score 0 / nothing verified) falls back to the literal
+  `(none)` — so "monitoring, no opportunity yet" becomes **one** row per company that
+  keeps updating, instead of a new duplicate row on every run
+
+**Changed — `Append Opportunities` → renamed `Upsert Opportunity`**
+- was: table **append** (new row every run)
+- now: worksheet **upsert** on `Opportunities`, `columnToMatchOn: "Opportunity ID"`, auto-map
+
+### Wiring now
+
+```
+Manual Trigger → Test Company Input → Company Research AI → Normalize Research Output
+  → Get Existing Companies → Assign Company ID
+       ├→ Upsert Company                                    → Companies
+       └→ Opportunity Research → Map Opportunity Output
+            → Get Existing Opportunities → Assign Opportunity ID
+            → Upsert Opportunity                            → Opportunities
+```
+
+Both dedup paths now satisfy the locked rules: one company row ever (`Grand NNN`),
+one opportunity row per company+type (`001`), re-runs update rather than duplicate.
+
+### Remaining gap for the outreach rules
+
+The 22 Opportunities columns carry `First Detected` and `Last Verified` — enough for the
+**72-hour freshness** filter (`Last Verified` within 72h).
+
+The **30-day re-engagement gate** needs a last-contacted timestamp. Two options:
+- add a `Last Outreach Date` column to `Opportunities`, or
+- derive it from the `Outreach` sheet (join on Opportunity ID, take max date) — better
+  normalized, matches the architecture, no new column on Opportunities
+
+Decision pending with owner.
+
+### Next build items
+
+- [ ] 72h freshness filter + 30-day re-engagement gate (needs the decision above)
+- [ ] Signals + Sources writes (evidence/traceability layer)
+- [ ] Suppression check → outreach draft → human approval → Outlook send
+- [ ] Owner: Outlook OAuth credential
