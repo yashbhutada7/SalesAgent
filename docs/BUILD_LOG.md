@@ -156,3 +156,78 @@ Decision pending with owner.
 - [ ] Signals + Sources writes (evidence/traceability layer)
 - [ ] Suppression check → outreach draft → human approval → Outlook send
 - [ ] Owner: Outlook OAuth credential
+
+---
+
+## 2026-08-25 — Dedup verified live ✅
+
+Owner ran the workflow twice. **One row in Companies, one row in Opportunities** after
+both runs. Dedup confirmed working: companies never duplicate, opportunities update in
+place. Foundation is sound.
+
+## 2026-08-25 — Contact Discovery (built, not executed, not published)
+
+Built because outreach cannot exist without a recipient and `Contacts` was empty.
+Required no new credentials — reuses the existing OpenAI and Excel credentials.
+
+### Nodes added
+
+**`Contact Research AI`** (OpenAI v2.3, web search on, plain-text format)
+- finds finance decision makers: CFO → Finance Director → Controller → VP Finance →
+  Head of Finance/Accounting → Finance Manager → Accounting Manager → (Founder/CEO only
+  for small companies with no finance leader)
+- returns at most 3, most relevant first, as `{ "contacts": [ ... ] }`
+
+**Anti-fabrication rules baked into the prompt** (the compliance-critical part):
+- never invent, guess, construct or **pattern-match** an email
+  (explicitly forbids `firstname.lastname@domain` inference)
+- only an email explicitly published in a reliable public source
+- blank email is stated to be **correct and expected**
+- no invented people, no similarly-named different companies
+- generic inboxes (`info@`, `sales@`, `support@`, `contact@`) rejected as decision makers
+- no fabricated LinkedIn URLs, phones or source IDs
+- empty `contacts` array declared a valid, preferred answer over any invention
+- placeholder/invalid website → return empty array
+
+**`Get Existing Contacts`** (Excel table `getRows`, `returnAll`, `alwaysOutputData`, `executeOnce`)
+
+**`Assign Contact IDs`** (Code, `runOnceForAllItems`)
+- dedup key: `Company ID` + (`Email` if present, else `Name`), normalized
+- match → reuse existing `Contact ID`; new → sequential `001`, `002` …
+- increments the running max **within** a batch, so several new contacts in one run get
+  distinct ids
+- defaults applied: `Email Verification Status` → `Unverified`, `Contact Confidence` →
+  `Unknown`, `Do Not Contact` → `No`
+- returns **zero items** when nothing verifiable → nothing is written downstream
+  (correct n8n empty-list behavior, no synthetic rows)
+
+**`Upsert Contact`** (Excel worksheet upsert on `Contacts`, match `Contact ID`, auto-map)
+
+### Wiring
+
+```
+Assign Opportunity ID
+  ├→ Upsert Opportunity                                   → Opportunities
+  └→ Contact Research AI → Get Existing Contacts
+       → Assign Contact IDs → Upsert Contact              → Contacts
+```
+
+### ID convention note
+
+`Contact ID` follows the same sequential zero-padded pattern as Opportunity ID
+(`001`, `002` …), consistent with the established convention. Flagged to owner as an
+assumption that can be changed now while the table is empty.
+
+### Expected first-run behaviour
+
+The test fixture uses `https://example.com`, which the prompt treats as a placeholder —
+so **zero contacts is the correct result** and proves the guardrail works. Real contacts
+require a real company website.
+
+### Next build items
+
+- [ ] Suppression check (Clients / Competitors / Do Not Contact) — before any draft
+- [ ] Outreach draft → `Outreach` with `Approval Status = Pending Approval`
+- [ ] 72h freshness filter (`Last Verified`) + 30-day gate (`max(Sent Date)` per Opportunity ID)
+- [ ] Sender workflow: scheduled → `Approved` + no `Sent Date` → Outlook send → stamp `Sent Date`
+- [ ] Owner: `Subject` column on Outreach, `Last Outreach Date` on Opportunities, Outlook credential
