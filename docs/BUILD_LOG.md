@@ -462,3 +462,95 @@ Assign Opportunity ID
        → Check Outreach Eligibility → Eligible?
             └─(true)→ Outreach Draft AI → Build Outreach Row → Upsert Outreach
 ```
+
+---
+
+## 2026-08-25 — Re-run guard verified ✅ + Suppression and Signals built
+
+### Re-run guard confirmed (execution 79)
+
+Second sender run sent nothing — correctly. The execution shows the row **was** read
+(`Sent Date: 46259`, `Outreach Status: Sent`) and `Build Send Queue` returned `[]`, so
+`Send Outreach Email` never fired. The system cannot double-email a prospect.
+
+That run also confirmed both fixes were needed: IDs came back as **numbers**
+(`Outreach ID: 1`, `Opportunity ID: 1`, `Contact ID: 1`) and `Sent Date` as the serial
+`46259` — exactly the two failure modes now handled.
+
+### All remaining tables verified present
+
+| Sheet | Table | Table ID |
+|---|---|---|
+| Signals | `tblSignals` | `{00000000-000C-0000-FFFF-FFFF03000000}` |
+| Suppression | `tblSuppression` | `{00000000-000C-0000-FFFF-FFFF06000000}` |
+| Clients | `tblClients` | `{00000000-000C-0000-FFFF-FFFF07000000}` |
+| Sources | `tblSources` | `{00000000-000C-0000-FFFF-FFFF09000000}` |
+
+**tblSuppression:** Suppression ID · Type · Company ID · Contact ID · Name/Company ·
+Reason · Date Added · Permanent · Notes
+
+**tblClients:** Record ID · Company Name · Company ID · Client Status · Date Added · Notes
+
+**tblSignals:** Signal ID · Company ID · Opportunity ID · Signal Type ·
+Signal Description · Signal Strength · First Detected · Last Verified ·
+Expected Deadline · Evidence · Source ID · Verification Status · Confidence · Status
+
+**tblSources:** Source ID · Company ID · Opportunity ID · Signal ID · Source Type ·
+Source Name · Original URL · Date Discovered · Date Verified · Source Status ·
+What It Supports · Notes
+
+### Suppression check — enforced BEFORE any draft is generated
+
+New `Get Suppression List` and `Get Clients` nodes feed `Check Outreach Eligibility`,
+which now blocks on:
+
+| Rule | Effect |
+|---|---|
+| Company ID present in `tblSuppression` | blocked, with the stored `Reason` surfaced |
+| Company ID in `tblClients` and status not former/inactive/churned/past | blocked as an existing client |
+| Contact ID present in `tblSuppression` | that contact excluded from selection |
+| Contact `Do Not Contact = Yes` | that contact excluded (existing rule) |
+
+Contact selection order is now **Primary → Backup → any usable**, where "usable" means a
+real email, not do-not-contact, and not suppressed.
+
+Debug counters added to the output: `Suppression Entries Checked`,
+`Client Records Checked`, `Contacts Found For Company`.
+
+Critically, suppression runs **before** `Outreach Draft AI` — a suppressed company never
+even reaches the drafting step, so no OpenAI spend and no draft that could be approved by
+mistake.
+
+### Signals evidence layer
+
+```
+Assign Opportunity ID → Get Existing Signals → Assign Signal ID → Upsert Signal
+```
+
+- Deduped on **Company ID + Opportunity ID**, sequential `Signal ID` (`001`, `002` …)
+- Reuses the existing `Signal ID` and preserves `First Detected` on re-detection;
+  refreshes `Last Verified`
+- Copies `Signal Type` (from Opportunity Type), `Signal Description` (Primary Signal),
+  `Signal Strength`, `Expected Deadline`, `Evidence` (Evidence Summary)
+- **Writes nothing** when `Primary Signal` is empty or `Signal Strength` is `None` —
+  no evidence row for a non-opportunity
+
+### ⚠️ Sources table not yet populated — needs a prompt change
+
+`tblSources` exists and is correctly shaped, but `Opportunity Research` does not currently
+return structured source data — its JSON has `evidence_summary` (prose) and no
+`source_url` / `source_name` fields. The prompt also forbids fabricating URLs, correctly.
+
+To populate Sources properly the Opportunity Research prompt must be extended to return
+an explicit `sources` array (name, URL, type, what it supports). That is a prompt change
+plus a new write branch — deliberately not done silently, since it alters a prompt that
+is currently working.
+
+### Current node count: 28 (main workflow)
+
+### Remaining build items
+
+- [ ] Sources population (needs the Opportunity Research prompt change above)
+- [ ] Response Management (inbound Outlook trigger → classify intent → Responses sheet)
+- [ ] Follow-up scheduling (`Follow-Up Date` / `Follow-Up Plan` columns exist, unused)
+- [ ] Learning loop (outcome logging → feeds scoring)
