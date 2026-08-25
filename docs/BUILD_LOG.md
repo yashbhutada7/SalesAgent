@@ -554,3 +554,90 @@ is currently working.
 - [ ] Response Management (inbound Outlook trigger → classify intent → Responses sheet)
 - [ ] Follow-up scheduling (`Follow-Up Date` / `Follow-Up Plan` columns exist, unused)
 - [ ] Learning loop (outcome logging → feeds scoring)
+
+---
+
+## 2026-08-25 — First real-company run (execution 80) ✅
+
+Self-test against **Grandeur Advisory** (`grandeuradvisory.com`). Only company name and
+website were supplied — country, industry, company type and revenue were left blank
+deliberately, so the research stage had to *discover* them rather than echo input.
+
+### Research quality — genuine, sourced discovery
+
+From name + website alone it verified:
+
+| Field | Discovered |
+|---|---|
+| Legal Name | `GRANDEUR ADVISORS LLP` — caught that the legal name differs from the trading name |
+| Country / State / City | India / Maharashtra / Pune |
+| Company Type | Limited Liability Partnership |
+| Industry | Financial Services |
+| Ownership | Privately Held |
+| Employee Count | 15 (LinkedIn reported), band 11-50 |
+| ERP | NetSuite, Odoo |
+| Accounting Software | NetSuite, QuickBooks, Xero, Zoho |
+| Technology Stack | + Tipalti, Bill, MineralTree, Vend |
+| Company Status | Active |
+| Verification Status | **Verified** |
+
+`Notes` cited three real sources: the official site, the LinkedIn company page, and the
+ZaubaCorp registry record (LLPIN ACB-3005). No fabricated URLs.
+
+### Judgement — the part that actually matters
+
+The agent was handed a company that is **hiring accountants and runs NetSuite** — the
+textbook shape of a hot prospect under naive scoring. It correctly refused:
+
+- **ICP Fit: Low** · **Priority: Low** · **Opportunity Score: 0** · **Signal Strength: None**
+- Reason: *"the researched company is Grandeur Advisory/Grandeur Advisors itself rather
+  than an external prospective customer… no verified evidence shows that it is seeking an
+  external finance/accounting provider"*
+- Evidence Summary explicitly separated **internal hiring** from a **buying signal**
+
+This is exactly the discrimination the whole design depends on. Scoring is reasoning about
+commercial intent, not pattern-matching keywords.
+
+### Guardrails all held
+
+| Guard | Result |
+|---|---|
+| `Assign Contact IDs` | **zero items** — no contacts written, no invented emails |
+| `Assign Signal ID` | **zero items** — no evidence row, correct with Signal Strength `None` |
+| `Check Outreach Eligibility` | `Eligible: false` — *"No contactable decision maker with a verified email \| Opportunity score 0 is below the 50 outreach threshold"* |
+| `Outreach Draft AI` | never ran — no wasted spend, no draft that could be approved by mistake |
+
+Two independent gates blocked it. The plain-English `Ineligible Reason` made diagnosis
+instant.
+
+### 🔴 Bug found and fixed — empty Company Name reaching the draft prompt
+
+`Check Outreach Eligibility` read `Company Name` from the **opportunity** item, which only
+carries the 22 opportunity fields — so it resolved to `""`. Any generated email would have
+addressed a blank company.
+
+**Fix:** company-level fields now come from `Assign Company ID`. Also added
+`Company Website`, `Company Country` and `Company Industry` to the output so the draft
+prompt has richer, verified context.
+
+### 🟠 Bug found and fixed — false revenue band from an unknown revenue
+
+Supplying revenue `0` produced `Revenue Band: "Under $1M"` — an unverified claim recorded
+as fact, which violates the never-invent rule.
+
+**Fix:** `Assign Company ID` now clears `Revenue`, `Revenue Band` and `Revenue Type` when
+no revenue was verified. Unknown stays blank.
+
+### Note on IDs
+
+The run assigned `Grand 001` with `Is New Company: true`, meaning the Companies table was
+empty at read time (earlier test rows had been cleared). The seeded test rows in
+Contacts/Outreach still reference `Grand 001`, which now resolves to Grandeur Advisory
+rather than the old BluePeak fixture — harmless test-data drift, worth clearing before
+real use.
+
+### Verdict
+
+Research, qualification, dedup, evidence-suppression and the outreach gates all work on
+real data. The pipeline's most important property — **refusing to manufacture an
+opportunity that isn't there** — is demonstrated, not assumed.
