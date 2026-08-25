@@ -313,3 +313,73 @@ no workflow change needed. See `docs/OWNER_SETUP.md`.
       `Last Outreach Date` on the Opportunity
 - [ ] Signals + Sources writes
 - [ ] Owner: `Subject` column, `Last Outreach Date` column, Outlook credential
+
+---
+
+## 2026-08-25 — Outreach Sender workflow (built, NOT activated)
+
+Owner completed all three prerequisites: `Subject` column on Outreach,
+`Last Outreach Date` on Opportunities, and the Outlook credential
+(`Microsoft Outlook account`, `NmkBgylCa1gGZEob`, `microsoftOutlookOAuth2Api`).
+Route 1 chosen: delegated OAuth with **Send As** on `accounting@grandeuradvisory.com`.
+
+### New workflow — `Grandeur BD Agent - Outreach Sender` (`sEaRV2WFAshZ9uFu`)
+
+Built as a **separate** workflow so the research pipeline stays untouched and sending
+can never fire as a side effect of research.
+
+```
+Daily Send Window (09:00)
+  → Get Outreach Rows      (Outreach/Table6, returnAll, executeOnce)
+  → Get Contacts           (tblContacts, returnAll, executeOnce)
+  → Build Send Queue       (Code — the gate)
+  → Send Outreach Email    (Outlook, from accounting@grandeuradvisory.com)
+       ├─(success)→ Mark Outreach Sent → Stamp Opportunity Last Outreach
+       └─(error)  → Mark Send Failed
+```
+
+### `from` address
+
+Set on the send node as `additionalFields.from = accounting@grandeuradvisory.com`.
+Microsoft enforces this against real mailbox rights — it works because Send As was
+delegated. `bodyContentType` is `Text` (the draft prompt produces plain text, not HTML)
+and `saveToSentItems` is on, so sent mail lands in the Sent Items folder.
+
+### Send Queue gate — five conditions, all must pass
+
+1. `Approval Status` = `approved` (case-insensitive)
+2. `Sent Date` empty — never re-sends
+3. `Subject` **and** `Draft/Message` both non-empty
+4. Contact resolves by `Contact ID` and has an `Email` containing `@`
+5. Contact `Do Not Contact` ≠ `yes`
+
+Anything failing is silently skipped, not sent. Emits zero items when nothing qualifies,
+so the chain stops cleanly on quiet days.
+
+### Error handling
+
+`Send Outreach Email` uses `onError: continueErrorOutput` with 3 retries, 2s apart.
+Failures route to **`Mark Send Failed`**, which writes `Outreach Status = Send Failed`
+plus the error message and date into `Notes` — a failed send is visible in the sheet
+rather than lost.
+
+### Post-send stamping
+
+- **Outreach row:** `Sent Date`, `Outreach Status = Sent`, `Draft Status = Sent`
+- **Opportunity row:** `Last Outreach Date` — the cached half of the "Both" design,
+  which closes the 30-day re-engagement loop back in `Check Outreach Eligibility`
+
+Both use `dataMode: define` (explicit column list) rather than auto-map, so only the
+intended columns are touched and nothing else on the row is overwritten.
+
+### ⚠️ Deliberately left INACTIVE
+
+The workflow is created but not activated and not published. Activating it is what makes
+it start sending real email on a schedule — an owner decision, never an automatic one.
+
+### Next build items
+
+- [ ] Suppression check (Clients / Competitors / Suppression sheets have no tables yet)
+- [ ] Signals + Sources writes
+- [ ] Response Management (inbound email trigger → classify intent)
+- [ ] Follow-up scheduling (`Follow-Up Date` / `Follow-Up Plan` columns exist, unused)

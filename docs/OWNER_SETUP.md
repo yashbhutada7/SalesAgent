@@ -139,6 +139,8 @@ mailboxes. Overkill until outreach genuinely sends from many addresses.
 | Task | Status |
 |---|---|
 | `Company Key` column on Companies | ✅ done |
-| `Subject` column on Outreach | ⬜ pending |
-| `Last Outreach Date` on Opportunities | ⬜ pending |
-| Microsoft Outlook credential | ⬜ pending |
+| `Subject` column on Outreach | ✅ done |
+| `Last Outreach Date` on Opportunities | ✅ done |
+| Microsoft Outlook credential | ✅ done (`NmkBgylCa1gGZEob`) |
+| Send As on accounting@grandeuradvisory.com | ✅ done |
+| **Activate the Outreach Sender workflow** | ⬜ owner decision — starts real sending |
