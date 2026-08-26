@@ -942,3 +942,128 @@ Correctly **not a prospect right now**. The agent cited Adecco Group's Q2 2026 r
 (LHH revenue flat) and Ranjit de Sousa's May 2026 appointment as LHH President, and found
 no finance-related buying signal in either. The system is working; LHH simply is not
 in-market today. It stays in the database and will be re-checked by the monitoring path.
+
+---
+
+## 2026-08-26 — Prospect Discovery engine + first draft written to Outreach ✅
+
+### New workflow — `Grandeur BD Agent - Prospect Discovery` (`iEZAsjljfX0jXF83`)
+
+The missing first stage of the architecture: the system now finds its own prospects.
+
+A web-search discovery step with the exclusions learned from three rejected companies
+encoded directly in the prompt — no accounting firms, CPA firms, outsourcing/BPO
+providers, consultancies, recruitment agencies, and specifically *"companies whose
+finance job postings are recruitment listings placed on behalf of clients rather than
+their own hiring"* (the LHH lesson). Every candidate must carry a real source URL, and
+an empty array is an accepted answer.
+
+**First run returned five real US mid-market prospects**, each with a live URL:
+
+| Company | Signal |
+|---|---|
+| **Aescape** (149 staff) | Accounting Manager, NetSuite required, already uses a third-party accounting firm |
+| **Afresh** | Controller; 70% revenue growth; wants to automate AP/AR and compress close |
+| **Clair** | Accounting Manager; multi-entity consolidation + ERP implementation |
+| **GC AI** | First Controller; 10x growth — but moving accounting *in-house from* an outsourced bookkeeper |
+| **Fi** | Accounting Manager, NY |
+
+GC AI is worth noting as a counter-example: strong on paper, but a company *exiting*
+outsourcing is arguably a negative signal. A naive scorer would rank it top.
+
+### Contact discovery rebuilt twice
+
+**Problem 1 — the enrichment chain could never execute.** `Assign Contact IDs` emits zero
+items when no named person is verified, and an n8n node with zero input does not run, so
+Hunter sat permanently downstream of a dead branch. The design was also circular:
+`emailFinder` needs the names that were missing.
+
+**Fix:** `Hunter Domain Search` (domainSearch) placed *before* the merge, so it always
+runs. Verified on LHH: **10 real addresses** written.
+
+**Problem 2 — domain search returns nothing for smaller companies.** `aescape.com`
+returned `{}`, while research found the ideal person (Lisa Hu, SVP Finance &
+Administration) with no address.
+
+**Fix:** re-added `emailFinder` as a fallback behind an IF, so it runs *only* for
+contacts lacking an email. Result: `nick@aescape.com` (confidence 95),
+`frank.britt@aescape.com` (97), `lisa.hu@aescape.com` (99) — all Verified.
+
+The two Hunter operations are complementary: domainSearch finds people at well-indexed
+companies, emailFinder converts a researched name into an address at smaller ones.
+
+### 🔴 My own bug: overriding the research stage's judgement
+
+`Assign Contact IDs` was force-marking whoever ranked first as `Primary Decision-Maker`.
+That produced a misleading flag on a generic VP at LHH, and failed the opposite way at
+Aescape — research *correctly* identified the SVP Operations as the accounting decision
+maker (the posting names him as the Accounting Manager's manager), but a title regex
+cannot see that.
+
+**Fix:** Primary/Backup are now designated only where the research explicitly said so, or
+the role is plainly finance. Ranking orders candidates; it no longer promotes anyone.
+Eligibility accepts either path.
+
+The principle: a regex cannot know a specific SVP owns the accounting hire. The research
+stage read the posting and did know. Trust the reasoning over the pattern match.
+
+### 🎯 All gates cleared — first real draft
+
+`Eligible: true` · USA ✅ · score 82 ✅ · fresh ✅ · not suppressed ✅ · no prior
+outreach ✅ · verified designated decision maker ✅
+(`Contacts Found: 3 · Reachable: 2 · Valid: 2`)
+
+Sample draft (score 82 run):
+
+> **Subject:** Accounting support as finance scales
+>
+> Hi Nick Nelson,
+>
+> Aescape's current Accounting Manager posting says the role will leverage a third-party
+> accounting firm across accounting operations, technical accounting, reporting, tax and
+> audit support, while initially reporting to the SVP of Operations.
+>
+> Grandeur Advisory provides outsourced accounting support that can supplement an
+> existing external model, including month-end close, financial reporting, AP/AR and
+> NetSuite support…
+
+Note *"can supplement an existing external model"* — it understood Aescape already has an
+accounting firm and pitched alongside rather than pretending to displace, matching the
+qualification stage's own conclusion.
+
+### 🔴 Outreach write: worksheet upsert fails on this sheet
+
+`Upsert Outreach` failed twice with
+`400 InvalidArgument — The number of rows or columns in the input array doesn't match the
+size or dimensions of the range`, under **both** auto-map and explicit column mapping. The
+worksheet-level upsert cannot reconcile the Outreach sheet's used range.
+
+**Fix:** switched to **`table: append`**, which respects the table's own column definition
+and was already proven on this sheet by the seeder. Append is also the correct semantics —
+creating a new draft is an insert, and the duplicate-draft guard upstream prevents two
+pending drafts for one opportunity.
+
+**Result: the draft row landed in `Outreach` with `Approval Status = Pending Approval`.**
+
+### Sender: approval-triggered sending
+
+Excel cannot push change events to n8n, so approval is detected by polling. Options were
+put to the owner with the execution cost of each:
+
+| Approach | Latency | Executions/month |
+|---|---|---|
+| Poll every 1 min | ~60 sec | ~43,000 |
+| **Poll every 15 min, business hours** ← chosen | ~15 min | ~1,100 |
+| Power Automate → webhook | instant | ~1 per approval |
+
+`Check For Approvals` now runs `*/15 8-20 * * 1-5`. ⚠️ This uses the **n8n instance
+timezone** — owner to confirm it is set to their working timezone.
+
+### Behaviour worth watching
+
+Opportunity type varies between runs as research surfaces different signals for the same
+company (Finance/Accounting Outsourcing vs Finance Operations). Since opportunity dedup
+keys on **company + type**, genuinely different signals create separate opportunities —
+correct by design, but it means repeated runs on one company can accumulate rows.
+
+### Current state: 34 nodes (main), 4 workflows
