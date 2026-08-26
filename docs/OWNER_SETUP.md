@@ -143,6 +143,7 @@ mailboxes. Overkill until outreach genuinely sends from many addresses.
 | `Last Outreach Date` on Opportunities | ✅ done |
 | Microsoft Outlook credential | ✅ done (`NmkBgylCa1gGZEob`) |
 | Send As on accounting@grandeuradvisory.com | ✅ done |
+| n8n instance timezone | ✅ confirmed `Asia/Calcutta` (see the full checklist at the end) |
 | **Activate the Outreach Sender workflow** | ⬜ owner decision — starts real sending |
 
 ---
@@ -199,6 +200,8 @@ address.
 | `Last Outreach Date` on Opportunities | ✅ done |
 | Microsoft Outlook credential | ✅ done (`NmkBgylCa1gGZEob`) |
 | Send As on accounting@grandeuradvisory.com | ✅ done |
-| **Hunter API credential** | ⬜ **pending — the current blocker** |
-| **A target-market prospect to test with** | ⬜ **pending** |
-| Activate the Outreach Sender workflow | ⬜ owner decision — starts real sending |
+| Hunter API credential | ✅ done (`RVNuMRGVdJhoNhT2`) |
+| A target-market prospect to test with | ✅ done — Aescape scored 82, draft is in Outreach |
+| n8n instance timezone | ✅ confirmed `Asia/Calcutta` — sender polls 08:00–20:45 IST, Mon–Fri |
+| **Approve the Aescape draft** | ⬜ **set `Approval Status = Approved` in the Outreach sheet** |
+| **Activate the Outreach Sender workflow** | ⬜ **owner decision — nothing sends until this is on** |

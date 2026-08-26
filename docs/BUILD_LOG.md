@@ -1066,4 +1066,67 @@ company (Finance/Accounting Outsourcing vs Finance Operations). Since opportunit
 keys on **company + type**, genuinely different signals create separate opportunities —
 correct by design, but it means repeated runs on one company can accumulate rows.
 
-### Current state: 34 nodes (main), 4 workflows
+### ✅ Instance timezone confirmed — no change needed
+
+The `*/15 8-20 * * 1-5` cron is interpreted in the **n8n instance timezone**, which was an
+open unknown. Rather than ask, a throwaway two-node diagnostic workflow reported it:
+
+```
+Workflow Timezone:   Asia/Calcutta
+Local Now:           2026-08-26T23:26:13+05:30
+Local Offset:        +330 minutes
+Container Timezone:  UTC
+```
+
+So the sender polls **08:00–20:45 IST, Mon–Fri** — already the owner's real business hours.
+The schedule stands as written. Diagnostic workflow archived after reading.
+
+Worth noting for future date logic: the *container* clock is UTC while `$now` (Luxon) is
+IST. Code nodes that use `new Date()` get UTC; anything using `$now` gets IST. The Sender's
+`Build Send Queue` stamps `Send Date` from `new Date().toISOString().slice(0,10)`, so
+between 18:30 and 00:00 IST the stamped date is the previous calendar day. Harmless for the
+30-day gate, but the recorded date can read a day early on late-evening sends.
+
+### 🔴 Double-email risk: re-engagement guards keyed on the wrong ID
+
+Both outreach guards in `Check Outreach Eligibility` — the 30-day re-engagement gate and the
+duplicate-draft guard — matched on **Opportunity ID**:
+
+```js
+if (idKey(r['Opportunity ID']) !== idKey(opportunityId)) continue;
+```
+
+This is the same defect from two angles. Opportunity dedup keys on *company + type*, and
+research words the type differently between runs (Aescape produced both
+`Finance / Accounting Outsourcing` and `Finance Operations`). A re-run therefore mints a
+**fresh Opportunity ID for the same company**, and both guards look up an ID that has no
+history — so a second draft to the same person passes every gate and can be approved and
+sent, inside the 30-day window.
+
+This sits directly under the approve→send path, which is exactly where the "don't become a
+spam cannon" principle has to hold: the owner has to be able to trust that approving a row
+sends one email to one person.
+
+**Fix:** both guards now key on **Company ID**.
+
+```js
+// The two guards below are scoped to the COMPANY, not the opportunity.
+// A re-run can mint a fresh Opportunity ID for the same company whenever
+// research words the opportunity differently, so an opportunity-scoped
+// guard lets a second email reach the same people.
+if (idKey(r['Company ID']) !== idKey(companyId)) continue;
+```
+
+The pending-draft reason now names the blocking row (`Outreach ID N`) so a skip is
+traceable rather than mysterious.
+
+**Deliberate trade-off:** one email per company per 30 days, even when a company has two
+genuinely distinct opportunities. Blocking is the safe direction — a missed second pitch
+costs a cycle, a duplicate cold email costs the relationship. Revisit only if a real case
+appears where two same-company opportunities clearly warrant separate conversations.
+
+Verified by reading the node back and diffing against the intended source: identical, and
+`parameters` has exactly `jsCode`/`language`/`mode` — no nested `parameters` object from
+the `setNodeParameter` footgun.
+
+### Current state: 34 nodes (main), 4 active workflows
