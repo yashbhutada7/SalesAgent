@@ -838,3 +838,107 @@ actually observed, with a confidence score. An address now enters the system as 
 with a recorded source, not as a model's invention.
 
 ### Node count: 31 (main workflow)
+
+---
+
+## 2026-08-26 — LHH run: Hunter works, contact bottleneck solved (executions 83, 84)
+
+### Execution 83 — country gate verified, and a third qualification insight
+
+`Company Country: USA` → `Target Market: USA`. First clean pass through the country gate.
+**Grand 003**. Industry discovered as *"Talent solutions, recruitment, leadership
+development, coaching, career mobility and outplacement"*.
+
+Scored **0**, with this reasoning:
+
+> *"Recent LHH finance/accounting job postings found in search results are **recruitment
+> assignments for LHH clients** rather than evidence that LHH is expanding its own finance
+> team."*
+
+LHH is a recruitment firm, so its site carries dozens of finance vacancies — advertised
+**on behalf of clients**. A keyword matcher scores that red hot. Third consecutive case of
+the agent making a distinction that would fool a naive system:
+
+| Company | The trap | What it saw |
+|---|---|---|
+| Grandeur | Hiring accountants + runs NetSuite | internal hiring ≠ buying signal |
+| Verve | "NetSuite" throughout the site | a service they *sell*, not a tool they *use* |
+| LHH | Dozens of finance job posts | postings **for clients**, not their own team |
+
+### 🔴 Architectural flaw found: the enrichment chain could never execute
+
+`Hunter Find Email` had **no run data at all**. Not a config fault — a wiring one.
+
+`Assign Contact IDs` returns **zero items** when the model cannot verify a named person.
+In n8n a node receiving zero items does not execute, so the entire enrichment chain
+downstream was silently skipped. Hunter could never have fired for any company.
+
+Worse, the design was circular: `emailFinder` requires a first and last name, but the
+missing thing *was* the names.
+
+### Fix: Hunter domainSearch as the primary contact source
+
+```
+Contact Research AI → Hunter Domain Search → Get Existing Contacts → Assign Contact IDs → Upsert Contact
+```
+
+`Hunter Domain Search` queries the company domain directly, filtered to
+`seniority: [senior, executive]` and `department: [finance, executive, management]`,
+returning names, titles **and** addresses together — no name needed first. It sits
+*before* the merge, so it always runs. `alwaysOutputData` and `continueRegularOutput`
+keep a miss from stopping the chain.
+
+`Assign Contact IDs` rewritten to merge both sources: Hunter's address wins, the model's
+research fills in detail, candidates are ranked (finance department and CFO/Controller/
+Finance Director titles score highest), then sequential IDs are assigned with the existing
+dedup.
+
+**Cost:** one credit per company instead of one per contact.
+
+### Execution 84 — it worked
+
+`Contacts Found For Company: 10`. Real addresses written to `tblContacts`, e.g.
+`erika.ruth@lhh.com` (VP), `bernice.alexander@lhh.com` (VP),
+`patience.matiwane@lhh.com` (GM) — each with LinkedIn URL, confidence 85, and provenance
+in `Notes`.
+
+Eligibility dropped from two blockers to **one**:
+
+> `Opportunity score 0 is below the 50 outreach threshold`
+
+**The contact bottleneck — the single constraint on every prior run — is solved.**
+
+### 🟠 Quality problem found in the same result, and fixed
+
+Every contact Hunter returned was a **generic VP or General Manager** — department
+`executive` / `management`, **not one in finance**. The ranking fell back to seniority and
+marked a non-finance VP as `Primary Decision-Maker: Yes`.
+
+Emailing an unspecified VP at a 10,000-person firm about outsourced accounting is
+spray-and-pray: it gets ignored and it costs sender reputation. Volume was never the goal.
+
+**Fix:** a `financeRelevant()` test (department contains finance, or title matches
+CFO / finance / financial / controller / accounting / treasury / FP&A / bookkeeping).
+Eligibility now **requires** a finance-relevant contact and reports the shortfall
+honestly:
+
+> `No finance decision maker identified (10 non-finance contacts on file)`
+
+New debug counters: `Reachable Contacts`, `Finance Contacts`.
+
+The contacts are still stored — they are real, useful company intelligence — they just
+cannot be the recipient of a finance pitch.
+
+### Note on Hunter data quality
+
+Confidence came back at **85** for all ten, below the `VERIFIED_SCORE = 90` threshold, so
+all were written `Unverified` — correct per the owner's decision, and they still surface
+for approval. One address carried `verification.status: "accept_all"`, meaning the domain
+accepts any address — a known deliverability caveat worth remembering when reviewing.
+
+### LHH verdict
+
+Correctly **not a prospect right now**. The agent cited Adecco Group's Q2 2026 results
+(LHH revenue flat) and Ranjit de Sousa's May 2026 appointment as LHH President, and found
+no finance-related buying signal in either. The system is working; LHH simply is not
+in-market today. It stays in the database and will be re-checked by the monitoring path.
