@@ -742,3 +742,55 @@ The wasted run accidentally proved the Monitoring path: re-researching Grandeur 
 `Is New Company: false` and `Is New Opportunity: false`, reused `Grand 001`, updated in
 place, and surfaced a **new** signal the first pass missed (AICTE internship dated
 2026-06-25) plus a fourth source. Re-research refreshes rather than duplicates.
+
+---
+
+## 2026-08-26 — Target-country gate
+
+Owner ruled **India out of scope** (raised via Verve Advisory, an Indian company that had
+just scored 52 and cleared the quality gate). Handled as a **general rule**, not a one-off
+suppression entry, so the whole class of error is closed permanently.
+
+### Implementation
+
+A `COUNTRY_ALIASES` map in `Check Outreach Eligibility` covering the 23 markets from the
+brief — USA · UK · Australia · Germany · Canada · Singapore · UAE · Netherlands · Ireland ·
+New Zealand · France · Switzerland · Belgium · Sweden · Denmark · Norway · Spain · Italy ·
+Hong Kong · Japan · South Korea · Saudi Arabia · Qatar — with common variants
+(`United States` / `US` / `America`, `England` / `Scotland` / `Wales` /
+`Northern Ireland` → UK, `Dubai` / `Abu Dhabi` → UAE, `Holland` → Netherlands, `KSA` →
+Saudi Arabia, and so on).
+
+Blocking behaviour:
+- Country outside the list → `"India is outside Grandeur target markets"`
+- Country blank/unverified → blocked conservatively, since target market cannot be confirmed
+- Adds `Target Market` to the output (resolved market name, or `OUT OF SCOPE`)
+
+**Scope of the gate:** it blocks **outreach only**. Out-of-market companies are still
+researched, scored, and monitored — the data stays useful, but no draft is ever generated
+and no email can ever be sent. This also means no OpenAI spend on drafting for
+out-of-scope companies.
+
+Verve Advisory (`Grand 002`) is now permanently un-emailable via this rule despite its
+score of 52. An explicit `tblSuppression` row remains available if a hard,
+country-independent block is ever wanted.
+
+### Enrichment provider research — n8n native node availability
+
+Checked which providers have first-class n8n nodes (materially easier than raw HTTP):
+
+| Provider | Native node | Operations |
+|---|---|---|
+| **Hunter** | ✅ `n8n-nodes-base.hunter` | `domainSearch`, `emailFinder`, `emailVerifier` |
+| **Dropcontact** | ✅ `n8n-nodes-base.dropcontact` | `contact:enrich` (from name + website) |
+| **Clearbit** | ✅ `n8n-nodes-base.clearbit` | `person:enrich`, `company:enrich`, `company:autocomplete` |
+| **Apollo** | ❌ none | would require HTTP Request |
+
+**Hunter is the recommended primary.** Its three operations map exactly onto the gap:
+Contact Research AI already finds the *person and title* reliably; Hunter's `emailFinder`
+turns name + domain into an address, and `emailVerifier` confirms deliverability before
+anything is written as `Verified`. That keeps the never-invent rule intact — a verifier
+result is evidence, not a guess.
+
+Dropcontact is the alternative where EU/GDPR posture matters most (French company,
+computes rather than resells a scraped database).
