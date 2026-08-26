@@ -794,3 +794,47 @@ result is evidence, not a guess.
 
 Dropcontact is the alternative where EU/GDPR posture matters most (French company,
 computes rather than resells a scraped database).
+
+---
+
+## 2026-08-26 — Hunter email enrichment (built, needs credential)
+
+Closes the single constraint every run has hit. Decision taken with owner: when Hunter
+cannot fully verify an address, **still use it but flag `Unverified`** so it reaches the
+approval queue and the human decides per lead.
+
+### Chain
+
+```
+Assign Contact IDs → Prepare Enrichment → Hunter Find Email → Apply Enrichment → Upsert Contact
+```
+
+**`Prepare Enrichment`** (Code) — derives the company domain from `Website` (strips
+scheme/`www`/path) and splits the discovered `Name` into first/last for Hunter's API.
+
+**`Hunter Find Email`** (`n8n-nodes-base.hunter`, `emailFinder`) — `onError:
+continueRegularOutput` with 2 retries, so a miss or API hiccup never kills the run.
+
+**`Apply Enrichment`** (Code, `runOnceForEachItem` for correct item pairing) —
+- **never overwrites** an email the research stage already verified
+- confidence **≥ 90** → `Verified`; below → written but `Unverified`
+- no address → `Email` blank, status `Unverified`
+- appends provenance to `Notes`: *"Email found via Hunter (confidence 94)"*
+- strips the temporary `Enrich *` helper fields before the Excel write
+
+`VERIFIED_SCORE = 90` is a single tunable constant.
+
+### Not yet attached
+
+The node has **no credential bound** — `hunterApi` must be created by the owner
+(see `docs/OWNER_SETUP.md` §5). Deliberately not stubbed with a synthesised credential ID.
+
+### Design note
+
+This preserves the never-invent rule rather than weakening it. The earlier prompt
+explicitly forbids the model from *guessing* or pattern-matching an address
+(`firstname.lastname@domain`). Hunter does not guess either — it returns addresses it has
+actually observed, with a confidence score. An address now enters the system as evidence
+with a recorded source, not as a model's invention.
+
+### Node count: 31 (main workflow)

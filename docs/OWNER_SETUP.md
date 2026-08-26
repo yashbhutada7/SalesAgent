@@ -144,3 +144,61 @@ mailboxes. Overkill until outreach genuinely sends from many addresses.
 | Microsoft Outlook credential | ✅ done (`NmkBgylCa1gGZEob`) |
 | Send As on accounting@grandeuradvisory.com | ✅ done |
 | **Activate the Outreach Sender workflow** | ⬜ owner decision — starts real sending |
+
+---
+
+## 5. Hunter API credential (contact enrichment)
+
+**Why:** every run so far has been blocked by the same single reason —
+*"No contactable decision maker with a verified email"*. Contact discovery finds the
+right people and titles; it cannot reliably find published email addresses. Hunter closes
+that gap and is the only thing standing between a scored opportunity and a sendable draft.
+
+**Why Hunter specifically:** it has a native n8n node (Apollo does not), and its
+operations map exactly onto the gap — `emailFinder` turns a name plus domain into an
+address, and returns a confidence score, so an address is *evidence* rather than a guess.
+
+### Steps
+
+1. Sign up at **https://hunter.io** (free tier ≈ 25 searches/month — enough to validate)
+2. Go to **Dashboard → API** and copy your **API key**
+3. In n8n: **Credentials → Add credential → Hunter API**
+4. Paste the key, name it **`Hunter account`**, **Save**
+5. Open **Grandeur BD Agent V1** → node **`Hunter Find Email`** → select that credential
+
+Tell Claude once it exists and the credential can be bound programmatically instead.
+
+### How it behaves (agreed with owner)
+
+| Outcome | Result |
+|---|---|
+| Hunter finds an address, confidence **≥ 90** | written with `Email Verification Status = Verified` |
+| Hunter finds an address, confidence **< 90** | **still written**, flagged `Unverified` — reaches you as a draft to approve |
+| Hunter finds nothing | `Email` left blank, contact stays un-emailable |
+| Research already found a verified email | Hunter result **ignored**, the verified one wins |
+
+The confidence threshold (`VERIFIED_SCORE = 90`) is a single constant at the top of
+`Apply Enrichment`.
+
+Every enriched contact gets a `Notes` entry recording the source and confidence, e.g.
+*"Email found via Hunter (confidence 94)"* — so provenance is never lost.
+
+### Credit note
+
+One Hunter credit per contact per run. Contact discovery returns up to 3 people per
+company, so budget roughly 1-3 credits per company. A separate `emailVerifier` step can
+be added later for true deliverability checking at the cost of a second credit per
+address.
+
+## Current status
+
+| Task | Status |
+|---|---|
+| `Company Key` column on Companies | ✅ done |
+| `Subject` column on Outreach | ✅ done |
+| `Last Outreach Date` on Opportunities | ✅ done |
+| Microsoft Outlook credential | ✅ done (`NmkBgylCa1gGZEob`) |
+| Send As on accounting@grandeuradvisory.com | ✅ done |
+| **Hunter API credential** | ⬜ **pending — the current blocker** |
+| **A target-market prospect to test with** | ⬜ **pending** |
+| Activate the Outreach Sender workflow | ⬜ owner decision — starts real sending |
