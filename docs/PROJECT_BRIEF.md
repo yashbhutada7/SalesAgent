@@ -186,3 +186,8 @@ Outreach → Follow-ups → Reply analysis → Meeting booking → Pipeline mana
 5. **Preserve working baselines** before modifying architecture.
 6. The earlier international recruitment-agency research becomes the **seed database**,
    not discarded work.
+7. **Send window: 15:00–02:00 IST, Monday to Friday.** No outbound email leaves outside
+   that window. Owner rule, set 2026-08-26. The window spans midnight deliberately — it
+   tracks the US working day, which is where the target markets are. Enforced twice: the
+   sender's schedule only polls inside it, and `Build Send Queue` re-checks the clock and
+   queues nothing outside it, so a manual run cannot bypass the rule.

@@ -143,7 +143,7 @@ mailboxes. Overkill until outreach genuinely sends from many addresses.
 | `Last Outreach Date` on Opportunities | ✅ done |
 | Microsoft Outlook credential | ✅ done (`NmkBgylCa1gGZEob`) |
 | Send As on accounting@grandeuradvisory.com | ✅ done |
-| n8n instance timezone | ✅ confirmed `Asia/Calcutta` (see the full checklist at the end) |
+| Sender timezone + send window | ✅ pinned `Asia/Kolkata`, 15:00–02:00 IST Mon–Fri |
 | **Activate the Outreach Sender workflow** | ⬜ owner decision — starts real sending |
 
 ---
@@ -202,6 +202,7 @@ address.
 | Send As on accounting@grandeuradvisory.com | ✅ done |
 | Hunter API credential | ✅ done (`RVNuMRGVdJhoNhT2`) |
 | A target-market prospect to test with | ✅ done — Aescape scored 82, draft is in Outreach |
-| n8n instance timezone | ✅ confirmed `Asia/Calcutta` — sender polls 08:00–20:45 IST, Mon–Fri |
-| **Approve the Aescape draft** | ⬜ **set `Approval Status = Approved` in the Outreach sheet** |
-| **Activate the Outreach Sender workflow** | ⬜ **owner decision — nothing sends until this is on** |
+| Sender timezone | ✅ pinned to `Asia/Kolkata` on the workflow itself |
+| Send window 15:00–02:00 IST, Mon–Fri | ✅ enforced in the cron **and** in `Build Send Queue` |
+| Approve the Aescape draft | ✅ approved and **sent** to Nick Nelson 2026-08-26 |
+| **Activate the Outreach Sender workflow** | ⬜ **the one switch left — until it is on, approvals never auto-send** |

@@ -10,7 +10,10 @@ Agreed with owner 2026-08-24.
 | Email account | **Microsoft Outlook** |
 | Build target | **Main** workflow `Grandeur BD Agent V1` (`jIghxNOFdVshn2d3`) |
 | Email drafting | **Draft before approval, into Excel** (owner approves the real message) |
-| Recipient email source | _pending — A / B / C below_ |
+| Recipient email source | **Hunter** — `domainSearch` then `emailFinder`, confidence recorded |
+| Approval detection | **Poll** — Excel cannot push change events to n8n |
+| Send window | **15:00–02:00 IST, Mon–Fri** — enforced in the cron *and* in `Build Send Queue` |
+| Workflow timezone | **`Asia/Kolkata`, pinned explicitly** on the sender — never inherited |
 
 ## Flow
 

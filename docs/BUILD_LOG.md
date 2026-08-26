@@ -1129,4 +1129,103 @@ Verified by reading the node back and diffing against the intended source: ident
 `parameters` has exactly `jsCode`/`language`/`mode` — no nested `parameters` object from
 the `setNodeParameter` footgun.
 
-### Current state: 34 nodes (main), 4 active workflows
+### 📧 First real outreach email sent
+
+Owner approved the Aescape draft in chat. Before sending, the live sheet was read back to
+confirm the row and the recipient rather than trusting the earlier execution output:
+
+```
+Outreach ID 1 · Grand 004 · Opportunity 5 · Contact 12
+Nick Nelson · SVP Operations · nick@aescape.com
+Email Verification Status: Verified   (Hunter confidence 95)
+Primary Decision-Maker: Yes           Do Not Contact: No
+Approval Status: Pending Approval     Sent Date: (empty)
+```
+
+`Approval Status` was then set to `Approved` through the same Excel worksheet upsert the
+sender uses, so the sheet carries a real approval record rather than a side-channel send.
+The sender ran and `Send Outreach Email` returned `{ success: true }`. Outreach row now
+reads `Sent Date 46260 · Outreach Status Sent · Draft Status Sent`.
+
+**This is the first genuine outbound email the system has produced end to end** —
+researched, scored, qualified against six gates, drafted, human-approved, and sent.
+
+### 🔴 `Stamp Opportunity Last Outreach` silently wrote nothing
+
+The send succeeded but the last node returned a row where *every field was an empty
+string*. `Last Outreach Date` was empty on all five Opportunities rows, including the one
+just emailed.
+
+Root cause is not Excel. The Excel upsert node emits a `pairedItem` index pointing at the
+**sheet row it touched**, not at the input item it came from. `Stamp Opportunity Last
+Outreach` sat downstream of `Mark Outreach Sent` and resolved its match value with:
+
+```js
+{{ $('Build Send Queue').item.json['Opportunity ID'] }}
+```
+
+`.item` walks the paired-item chain backwards. Through `Mark Outreach Sent` that chain
+said `item: 1`, but `Build Send Queue` had emitted a single item at index 0, so resolution
+fell through to empty and the upsert matched nothing. `Mark Outreach Sent` used the
+identical expression and worked — because *its* input came from the Outlook node, whose
+pairing was still intact. The defect only appears one hop past an Excel node.
+
+**Fix:** rewired so `Send Outreach Email` feeds `Mark Outreach Sent` **and**
+`Stamp Opportunity Last Outreach` as parallel branches. Both now sit one hop from the
+Outlook node, both resolve `.item` correctly, and neither depends on the other.
+
+**Rule worth keeping: never use `$('Node').item` downstream of a Microsoft Excel node.**
+Either branch from a node with intact pairing, or read the value from `$json`.
+
+No blank row was appended — the Opportunities table still holds exactly 5 rows, none
+blank. Opportunity 5 was backfilled to `2026-08-26` to match the Outreach `Sent Date`.
+
+### ⏰ Owner rule: send only 15:00–02:00 IST, Mon–Fri
+
+Set by the owner immediately after the first send. The window spans midnight on purpose —
+it tracks the US working day, where the target markets are.
+
+Three changes, because a cron alone is not enforcement:
+
+**1. Timezone pinned.** The sender's `settings.timezone` is now `Asia/Kolkata` explicitly
+rather than inherited. This mattered: the schedule trigger's manual-execution output
+reported `Timezone: UTC (UTC+00:00)` while a Code node's `$now.zoneName` reported
+`Asia/Calcutta`. Rather than reason about which one governs cron scheduling, the setting
+is now stated on the workflow and the ambiguity is gone. (Verified on a disposable
+workflow first that `setWorkflowSettings` preserves `availableInMCP` — it does.)
+
+**2. Schedule covers the window in two legs**, since cron cannot express a range crossing
+midnight:
+
+```
+*/15 15-23 * * 1-5     Mon-Fri  15:00 - 23:45
+*/15 0-1  * * 2-6      Tue-Sat  00:00 - 01:45   (tail of the previous weekday evening)
+```
+
+**3. Hard gate inside `Build Send Queue`.** The cron controls when the workflow *runs*; it
+cannot stop a manual execution. The queue builder now checks the clock itself and returns
+`[]` outside the window — and a node with zero input items does not execute in n8n, so the
+Outlook node cannot fire at all:
+
+```js
+const eveningLeg      = weekday >= 1 && weekday <= 5 && hour >= 15;
+const afterMidnightLeg = weekday >= 2 && weekday <= 6 && hour < 2;
+if (!eveningLeg && !afterMidnightLeg) return [];
+```
+
+**Also fixed while here:** `Send Date` came from `new Date().toISOString()`, which is the
+*container* clock — UTC. Between 18:30 and 00:00 IST that reports the previous day. Now
+harmless-sounding, but the new window is deliberately mostly after 18:30 IST, so nearly
+every future send would have been stamped a day early. Now `$now.toFormat('yyyy-LL-dd')`
+in pinned IST.
+
+One consequence stands in the record: the Aescape email went out at 01:35 IST on
+2026-08-27 but is stamped `2026-08-26`, because it was sent under the old UTC logic. Left
+as-is so the Outreach and Opportunities rows agree with each other; every send from here
+is stamped in IST.
+
+### Current state: 34 nodes (main), 3 active workflows
+
+Diagnostic workflows built during this session (outreach inspector, opportunities dump,
+approval/backfill helpers) were archived after use — they write to live tables and should
+not be runnable by accident.
