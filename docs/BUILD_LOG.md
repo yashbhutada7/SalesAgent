@@ -641,3 +641,104 @@ real use.
 Research, qualification, dedup, evidence-suppression and the outreach gates all work on
 real data. The pipeline's most important property — **refusing to manufacture an
 opportunity that isn't there** — is demonstrated, not assumed.
+
+---
+
+## 2026-08-26 — Verve Advisory: first opportunity above threshold ✅ (execution 82)
+
+First run against a genuine external prospect. Only name + website supplied.
+
+### Company research
+
+| Field | Discovered |
+|---|---|
+| Legal Name | VERVE ADVISORY PRIVATE LIMITED |
+| CIN | U74140PN2020PTC191886, incorporated 11 July 2020 |
+| Location | Pune, Maharashtra, India |
+| Type / Ownership | Private Limited Company / Privately Held |
+| Employees | 120+ (company reported), band 51-200 |
+| Company ID | **Grand 002** — correctly incremented |
+| Verification Status | Verified |
+| **ICP Fit / Priority** | **Medium / Medium** |
+
+Sources: verveadvisory.in, LinkedIn company page, IndiaFilings MCA record, Tofler record.
+
+### 🎯 The most important behaviour in the whole project so far
+
+`ERP`, `Accounting Software` and `Technology Stack` came back **blank**, with this note:
+
+> *"The official website describes Outsourced Accounting, NetSuite Accounting and Offshore
+> Staffing as company services; these are service offerings and are not evidence that Verve
+> itself uses NetSuite or outsources its own accounting."*
+
+The agent saw "NetSuite" prominently on the site and **refused to record it as Verve's own
+ERP**, because it is a service they *sell*, not a tool they *use*. A naive scraper would
+have tagged Verve as a NetSuite shop and scored it hot. This is the single clearest proof
+that qualification is reasoning about meaning rather than matching keywords.
+
+It also discriminated between prospects: **Medium** for Verve vs **Low** for Grandeur
+itself — same industry, different commercial relationship.
+
+### Opportunity — first one to clear the threshold
+
+| Field | Value |
+|---|---|
+| Opportunity ID | **002** |
+| Type | Finance Team Expansion |
+| Signal Strength | Medium |
+| **Opportunity Score** | **52** — first score above the 50 gate |
+| Urgency | Near Term |
+| Grandeur Service | Finance Operations |
+| Status | Monitoring |
+
+Evidence cited four named openings (Research Analyst – Finance & Taxation, Sr Executive
+Finance, Accounts Intern, Financial Modelling Analyst) plus a named recent hire announced
+on LinkedIn — and still concluded, correctly, that no explicit *buying* signal exists, so
+the status is Monitoring rather than Active.
+
+### Signals layer fired for the first time
+
+`Signal 001` written to `tblSignals`: type, description, strength, evidence, dates, all
+linked to `Grand 002` / Opportunity `002`. Evidence layer confirmed working end to end.
+
+### The binding constraint, now proven empirically
+
+`Check Outreach Eligibility` returned exactly **one** blocking reason:
+
+> `No contactable decision maker with a verified email`
+
+The score gate **passed** (52 ≥ 50). Freshness passed. Suppression passed. Duplicate-draft
+passed. `Contacts Found For Company: 0`.
+
+A legitimate, scored, evidenced opportunity was produced — and could not be acted on for
+one reason only: **no contact data**. This is direct evidence for the recommendation to
+buy enrichment (Apollo/Hunter/Lusha) before building any further intake capacity.
+More leads upstream of a broken contact step produce more leads nobody can contact.
+
+### 🔴 Process failure on my side — three repeats of the same mistake
+
+Two earlier "fixes" (empty Company Name in drafts, false Revenue Band) **never applied**.
+`setNodeParameter` resolves its JSON Pointer against the node's `parameters` object, so a
+path of `/parameters/jsCode` silently created a nested junk `parameters.parameters` key
+and the real code was untouched. The tool reported `appliedOperations` success both times.
+
+I had already hit and documented this exact gotcha, then repeated it twice more — once on
+the array path, once on `jsCode`, and once when switching the test company (which caused a
+wasted run researching Grandeur instead of Verve).
+
+**Rule adopted:** never use `setNodeParameter`. Always `updateNodeParameters` with
+`replace: true`, and **always verify by reading the node back** rather than trusting the
+success response.
+
+Both fixes have now been reapplied and verified live:
+- `Check Outreach Eligibility` parameter keys are `jsCode, language, mode` (junk key gone),
+  references `Assign Company ID`, and emits `Company Website` / `Country` / `Industry`
+- `Assign Company ID` contains the `!Number(out['Revenue'])` guard clearing Revenue,
+  Revenue Band and Revenue Type
+
+### Bonus: repeat-company behaviour verified (execution 81)
+
+The wasted run accidentally proved the Monitoring path: re-researching Grandeur returned
+`Is New Company: false` and `Is New Opportunity: false`, reused `Grand 001`, updated in
+place, and surfaced a **new** signal the first pass missed (AICTE internship dated
+2026-06-25) plus a fourth source. Re-research refreshes rather than duplicates.
