@@ -205,4 +205,6 @@ address.
 | Sender timezone | ✅ pinned to `Asia/Kolkata` on the workflow itself |
 | Send window 15:00–02:00 IST, Mon–Fri | ✅ enforced in the cron **and** in `Build Send Queue` |
 | Approve the Aescape draft | ✅ approved and **sent** to Nick Nelson 2026-08-26 |
-| **Activate the Outreach Sender workflow** | ⬜ **the one switch left — until it is on, approvals never auto-send** |
+| Remote-only rule | ✅ research reports work arrangement, eligibility gate blocks non-remote |
+| One email per 10 minutes | ✅ poll every 10 min, one send per run |
+| **Activate the Outreach Sender workflow** | ✅ **LIVE — approvals now auto-send** |

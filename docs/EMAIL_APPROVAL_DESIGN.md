@@ -13,6 +13,8 @@ Agreed with owner 2026-08-24.
 | Recipient email source | **Hunter** — `domainSearch` then `emailFinder`, confidence recorded |
 | Approval detection | **Poll** — Excel cannot push change events to n8n |
 | Send window | **15:00–02:00 IST, Mon–Fri** — enforced in the cron *and* in `Build Send Queue` |
+| Send rate | **1 email per 10 minutes** — poll every 10 min, `SEND_BATCH_SIZE = 1` |
+| Eligible roles | **Remote only** — hybrid, on-site, and unstated are all blocked |
 | Workflow timezone | **`Asia/Kolkata`, pinned explicitly** on the sender — never inherited |
 
 ## Flow

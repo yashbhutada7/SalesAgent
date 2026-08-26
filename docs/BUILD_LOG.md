@@ -1224,7 +1224,84 @@ One consequence stands in the record: the Aescape email went out at 01:35 IST on
 as-is so the Outreach and Opportunities rows agree with each other; every send from here
 is stamped in IST.
 
-### Current state: 34 nodes (main), 3 active workflows
+### 🌐 Remote-only rule
+
+Owner rule: pursue only remote roles, not hybrid and not on-site. The reasoning is
+delivery, not preference — Grandeur works remotely, so a role requiring presence in a
+Tampa office cannot be served no matter how strong the finance signal is. Filtering it out
+at qualification stops the system spending research and a send on something unwinnable.
+
+Nothing in the schema recorded work arrangement, so this took two changes:
+
+**1. Research must report it.** `Opportunity Research` now has a `WORK ARRANGEMENT`
+section requiring `evidence_summary` to begin with exactly one tag:
+
+```
+WORK ARRANGEMENT: Remote |
+WORK ARRANGEMENT: Hybrid |
+WORK ARRANGEMENT: On-site |
+WORK ARRANGEMENT: Not stated |
+WORK ARRANGEMENT: Not a job posting |
+```
+
+The prompt forbids inferring the arrangement from the company's general policy, from the
+city in the posting, or from what is typical for the role. A posting naming a headquarters
+is not thereby on-site. This kept the change inside the existing 22-field JSON contract —
+no new Excel column, so nothing was blocked on the owner.
+
+Applied as a **merge** update (`replace: false`) supplying only `responses`, so `modelId`,
+`options`, and the `builtInTools` web-search config survived untouched. Verified by
+diffing the read-back against the intended text: identical.
+
+**2. Eligibility enforces it.** A seventh gate parses the tag:
+
+| Tag | Outcome |
+|---|---|
+| `Remote` | pursue |
+| `Not a job posting` | pursue — an ERP migration or CFO appointment has no work arrangement |
+| `Hybrid` / `On-site` | blocked |
+| `Not stated` | **blocked** |
+| tag missing entirely | **blocked** |
+
+Blocking `Not stated` is the never-invent rule applied to a new field: if the posting does
+not say the role is remote, we do not email on the assumption that it could be. The
+tradeoff is real — some genuinely remote roles with vague postings will be skipped — and
+it is the right direction, because the failure mode on the other side is pitching offshore
+delivery to someone who needs a person in the building.
+
+The five existing opportunities carry no tag and are therefore now blocked until
+re-researched. Correct: they were qualified before the rule existed.
+
+### ⏱️ One email per 10 minutes
+
+Owner rule: emails go out at 10-minute intervals, not in a batch. Two changes:
+
+```
+*/10 15-23 * * 1-5     poll every 10 min, Mon-Fri 15:00-23:50
+*/10 0-1  * * 2-6      poll every 10 min, Tue-Sat 00:00-01:50
+```
+
+and `SEND_BATCH_SIZE = 1` in `Build Send Queue`, so each run sends at most one email and a
+backlog drains one at a time. `Queue Depth` is now carried on each queued item so a run
+records how many drafts were waiting rather than silently sending one of many.
+
+This is reputation protection, not politeness. A batch of cold emails leaving a domain in
+one second is the clearest spam signal a mail provider sees, and `grandeuradvisory.com` has
+no sending history to absorb it.
+
+### 🟢 LIVE
+
+`Grandeur BD Agent - Outreach Sender` is **published and active** (version
+`ca6bcea2-289f-444a-aebd-8108acc90b1b`). Approving a row in the Outreach sheet now sends
+without anyone triggering anything.
+
+Activation was safe to do immediately: the only Outreach row is Outreach ID 1, already
+`Sent`, so no queued draft fired on publish.
+
+The human approval gate is untouched and remains the core control — the system drafts and
+queues, a person still decides. What changed is that the decision now executes itself.
+
+### Current state: 34 nodes (main), 3 active workflows, sender LIVE
 
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,
 approval/backfill helpers) were archived after use — they write to live tables and should

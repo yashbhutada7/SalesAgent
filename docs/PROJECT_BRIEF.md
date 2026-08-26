@@ -186,7 +186,15 @@ Outreach → Follow-ups → Reply analysis → Meeting booking → Pipeline mana
 5. **Preserve working baselines** before modifying architecture.
 6. The earlier international recruitment-agency research becomes the **seed database**,
    not discarded work.
-7. **Send window: 15:00–02:00 IST, Monday to Friday.** No outbound email leaves outside
+7. **Remote roles only.** Grandeur delivers remotely, so an on-site or hybrid role
+   cannot be served however strong the signal. Owner rule, set 2026-08-26. Opportunity
+   Research tags each signal's work arrangement from the posting itself; anything other
+   than Remote is blocked — including *Not stated*, because remote delivery must be
+   confirmed, never assumed.
+8. **One email per 10 minutes.** Approved drafts drain one at a time, never as a batch.
+   A burst of cold email leaving in one second is the clearest spam signal a mail
+   provider sees.
+9. **Send window: 15:00–02:00 IST, Monday to Friday.** No outbound email leaves outside
    that window. Owner rule, set 2026-08-26. The window spans midnight deliberately — it
    tracks the US working day, which is where the target markets are. Enforced twice: the
    sender's schedule only polls inside it, and `Build Send Queue` re-checks the clock and
