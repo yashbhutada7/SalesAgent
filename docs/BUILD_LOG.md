@@ -1366,6 +1366,78 @@ email. The prompt names the tag and says to ignore it.
 Word count moved 90–130 → 130–180. The old ceiling could not hold a signal, an
 introduction, a specific proposal and a link.
 
+### ✅ Verified: work-arrangement tag works on a live run
+
+Ran the main workflow against **Afresh** (a US prospect from the discovery workflow), since
+Aescape is now blocked by its own 30-day company guard. The tag came back clean:
+
+```
+Work Arrangement: Remote        Opportunity Score: 82
+Evidence Summary: "WORK ARRANGEMENT: Remote | Afresh's current Greenhouse posting
+explicitly lists the Controller role as 'Remote - United States.' ..."
+```
+
+Research quoted the posting rather than inferring, the gate parsed it, and the opportunity
+qualified. Both halves of the rule work.
+
+**Afresh then failed at a different gate: `No contactable decision maker with a verified
+email` — `Contacts Found For Company: 0`.** Contact discovery plus Hunter found nobody. So
+a company scoring 82, in a target market, on a verified remote finance signal, produced no
+outreach. This is the contact-enrichment ceiling reasserting itself, and it is now the
+binding constraint again: qualification is working better than sourcing.
+
+Note also: `get_workflow_execution` reported this run as `status: running` with empty
+runData for 12+ minutes after it had actually succeeded in 1m48s. `search_workflow_executions`
+had the correct status the whole time. **Trust the search endpoint over the detail endpoint
+for execution status.**
+
+### ✍️ Draft copy verified against a real record
+
+Because Afresh produced no draft, the rewritten prompt was rendered in a throwaway preview
+workflow against Aescape's real opportunity and contact records — the same inputs that
+produced the original generic email, so the two are directly comparable. (One field was a
+stand-in: the Aescape record predates the tag, so `WORK ARRANGEMENT: Not stated |` was
+prefixed to exercise the ignore-the-tag rule.)
+
+Result: signal named specifically, the work it creates spelled out, Grandeur introduced in
+one sentence, exactly three pieces of proposed work — partner billing and collections,
+settlement and revenue-share reconciliation, NetSuite workflows — all traceable to the
+evidence, the link present once, and the tag correctly ignored. It passes the swap test:
+nothing in it transfers to another company.
+
+### 🔴 Trailing punctuation would have broken every link
+
+The first preview render closed with:
+
+```
+More about Grandeur is at https://grandeuradvisory.com/.
+```
+
+The full stop sits flush against the URL. Outreach is sent as **plain text**
+(`bodyContentType: Text`), so the recipient's mail client auto-linkifies the URL itself,
+and Outlook's plain-text linkifier has historically absorbed trailing punctuation into the
+href. That would have produced a dead link in the only call to action in the email — on
+every send, silently, with nothing in the logs to show for it.
+
+Caught only because the copy was actually rendered rather than assumed. The prompt now
+carries an explicit rule with a worked example, and the re-render confirms it:
+
+```
+You can see more at https://grandeuradvisory.com/ and if that kind of additional
+capacity is relevant, would it be worth a short conversation?
+```
+
+### ⚠️ Open: the emails have no signature
+
+`Send Outreach Email` sets `bodyContent` to the draft body and nothing else, and the draft
+prompt explicitly says *"Do NOT include a signature... The sender adds those."* Nobody adds
+them. Every email so far has gone out with no sign-off, no sender name, and no contact
+details beyond the From address.
+
+Not fixed here because it needs a decision that is not mine to make: who signs (a named
+person or the firm), what title, and whether to include a phone number. Flagged to the
+owner.
+
 ### Current state: 34 nodes (main), 3 active workflows, sender LIVE
 
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,
