@@ -1438,6 +1438,62 @@ Not fixed here because it needs a decision that is not mine to make: who signs (
 person or the firm), what title, and whether to include a phone number. Flagged to the
 owner.
 
+### ❓ Question-led email structure
+
+Owner revision to the body: greet properly, then **ask** whether they are looking for what
+the job post asks for, then say how Grandeur solves it. The body spec is now six ordered
+paragraphs:
+
+1. `Hi <Name>,` on its own
+2. one short warm line — "Hope the week is going well at <Company>."
+3. **the question**, in the evidence's own terms, ending in a question mark
+4. one sentence on who Grandeur is
+5. how Grandeur solves *exactly that*, with the standing three-item cap
+6. the close, with the link and a low-friction ask
+
+Paragraph 3 replaces the old statement-of-signal opener. Same evidence, different move:
+the old version told them what we had noticed about them, the new one asks whether the need
+we inferred is real. It also hands the reader a one-word reply, which is the cheapest
+possible response to a cold email.
+
+Paragraph 5 carries an explicit constraint — *"must answer the question in paragraph 3, not
+change the subject"* — because a question followed by an unrelated pitch is worse than no
+question at all.
+
+The prompt covers the non-job-posting case too: where the signal is an ERP migration, a
+funding round or a CFO appointment, the question asks about the finance work the evidence
+shows they are taking on, rather than forcing a hiring frame that does not fit.
+
+### 🔴 The URL rule caused a run-on sentence
+
+Fixing the trailing-punctuation bug created a second one. Told never to put punctuation
+after the URL, the model dropped the sentence terminator entirely:
+
+```
+You can see more at https://grandeuradvisory.com/ Would it be worth a short conversation?
+```
+
+Two sentences fused, no full stop. The rule was correct about what to avoid and silent
+about what to do instead, so the model satisfied it in the laziest available way.
+
+**Fix:** state the positive requirement rather than only the prohibition — the URL must sit
+**inside** a sentence, never end one, so the full stop lands well clear of the link. The
+prompt now carries one correct example and both wrong ones. Re-render confirms:
+
+```
+You can see more at https://grandeuradvisory.com/ if useful for context. Would it be
+worth a short conversation about whether this could complement the work Aescape is
+building out?
+```
+
+Worth remembering as a prompt-writing rule in its own right: **a prohibition without a
+replacement gets satisfied by deletion.** Both bugs here were found by rendering the copy,
+neither by reading the prompt.
+
+Also re-confirmed the `setNodeParameter` array limitation the hard way — `/responses/values/0/content`
+fails with *"cannot descend into non-object at '/responses/values'"*. `updateNodeParameters`
+with `replace: false` is the only way to edit a prompt in place.
+
 ### Current state: 34 nodes (main), 3 active workflows, sender LIVE
 
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,

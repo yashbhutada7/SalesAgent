@@ -195,11 +195,15 @@ Outreach → Follow-ups → Reply analysis → Meeting booking → Pipeline mana
 8. **One email per 10 minutes.** Approved drafts drain one at a time, never as a batch.
    A burst of cold email leaving in one second is the clearest spam signal a mail
    provider sees.
-9. **Every email must fail the swap test.** If a draft could be sent to a different
+9. **Lead with their problem, as a question.** The email asks whether they are looking
+   for the thing the evidence says they are looking for, in the posting's own words,
+   before it says anything about Grandeur. The pitch answers that question; it never
+   changes the subject.
+10. **Every email must fail the swap test.** If a draft could be sent to a different
    company by changing only the two names, it is not outreach, it is a mailshot. The
    draft prompt enforces this: at most three pieces of proposed work, each traceable to
    the verified evidence, never a recital of Grandeur's service range.
-10. **Send window: 15:00–02:00 IST, Monday to Friday.** No outbound email leaves outside
+11. **Send window: 15:00–02:00 IST, Monday to Friday.** No outbound email leaves outside
    that window. Owner rule, set 2026-08-26. The window spans midnight deliberately — it
    tracks the US working day, which is where the target markets are. Enforced twice: the
    sender's schedule only polls inside it, and `Build Send Queue` re-checks the clock and
