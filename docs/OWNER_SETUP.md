@@ -208,3 +208,69 @@ address.
 | Remote-only rule | ✅ research reports work arrangement, eligibility gate blocks non-remote |
 | One email per 10 minutes | ✅ poll every 10 min, one send per run |
 | **Activate the Outreach Sender workflow** | ✅ **LIVE — approvals now auto-send** |
+
+---
+
+## 6. Phase 2 setup — replies, follow-ups and instant approval
+
+Four tasks. They are independent, so they can be done in any order, but nothing in
+Phase 2 works until (a) is done.
+
+### (a) Add three columns to the `Outreach` table  ← blocks everything below
+
+Open the **Outreach** sheet. Click any cell **inside** `Table6`, then add these three
+column headers in the first empty columns **of the table** (not to the right of it — a
+header typed outside the table boundary is invisible to the Excel API, which is what
+made rows vanish once already):
+
+| Column | Holds | Why |
+|---|---|---|
+| `Sequence Step` | `0`, `1`, `2`, `3` | 0 is the first email; 1–3 are the follow-ups. Caps the sequence at 3. |
+| `Sent Message ID` | Graph message id | Needed to reply **on the same thread** rather than starting a new one. |
+| `Conversation ID` | Graph conversation id | Ties a reply back to the outreach that caused it. |
+
+Leave them blank. The workflows populate them.
+
+### (b) Create a `Responses` sheet
+
+New worksheet named exactly **`Responses`**. Put these headers in row 1, select them,
+and press **Ctrl+T** (My table has headers ✓) so it becomes a real table:
+
+```
+Response ID | Outreach ID | Company ID | Contact ID | Received Date |
+From Email | From Name | Subject | Body | Intent | Conversation ID | Notes
+```
+
+`Intent` is filled by classification — *Interested*, *Not Interested*, *Referred*,
+*Out of Office*, *Unsubscribe*, *Other*. Auto-replies must be classified before they can
+be allowed to stop a sequence, otherwise a holiday responder silently kills a live lead.
+
+### (c) Grant `Mail.Read` to the Outlook credential
+
+Reply handling needs to read the `accounting@grandeuradvisory.com` mailbox. This is the
+same Entra admin-consent flow as the Send As permission: an admin approves the added
+scope for the n8n app. Without it the reply watcher cannot be built at all.
+
+### (d) Build the Power Automate flow (instant approval)
+
+Excel cannot push changes to n8n, so a watcher has to sit in Microsoft's side. Steps:
+
+1. **make.powerautomate.com** → Create → **Automated cloud flow**
+2. Trigger: **When a row is modified** (Excel Online Business)
+3. Location / Document Library / File: the `Grandeur_BD_Agent_V1` workbook · Table: `Table6`
+4. Add a **Condition**: `Approval Status` **is equal to** `Approved`
+5. On the *If yes* branch: **HTTP** action → **POST** → the n8n webhook URL (supplied once
+   the webhook node is built) → Body: `{ "outreachId": <Outreach ID from the trigger> }`
+6. Save.
+
+Approving a row then fires the send within seconds instead of waiting for the next poll.
+The 10-minute spacing rule and the 15:00–02:00 IST window still apply — approval releases
+the email into the queue, it does not bypass the guards.
+
+### (e) Apollo.io API key (contact enrichment)
+
+Sign up at apollo.io, then **Settings → Integrations → API** → create a key. Paste it into
+n8n as a **Header Auth** credential (`X-Api-Key`). This is the second enrichment stage
+after Hunter, and it returns `linkedin_url` on people records — which is what removes the
+manual LinkedIn hunting.
+

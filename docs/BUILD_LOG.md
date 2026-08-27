@@ -1494,7 +1494,90 @@ Also re-confirmed the `setNodeParameter` array limitation the hard way — `/res
 fails with *"cannot descend into non-object at '/responses/values'"*. `updateNodeParameters`
 with `replace: false` is the only way to edit a prompt in place.
 
-### Current state: 34 nodes (main), 3 active workflows, sender LIVE
+### 🚨 OUTAGE: Excel credential expired — the live sender has been failing silently
+
+Found while testing the new intake, not by any alert. The Microsoft Excel OAuth credential
+(`t05ZuN05jLPuMapG`) has stopped refreshing:
+
+```
+NodeApiError: The credential "Microsoft Excel account" needs to be reconnected.
+Access could not be refreshed because the connected account has revoked access, the
+refresh token expired, or the account password or permissions changed.
+```
+
+Timeline from the execution history:
+
+| | |
+|---|---|
+| Last successful sender run | execution **119**, 2026-08-27 **12:20 UTC** (17:50 IST) |
+| Every run since | **failed** — 21 consecutive ticks |
+| Duration | ~3.5 hours before anyone noticed |
+
+The sender is `active: true` and fires every 10 minutes, so it has been erroring on every
+tick. During that window nothing could be read from Outreach, no approval could be
+detected, and nothing could send. The workbook is the database for the whole system, so
+this takes out the main pipeline too.
+
+Only the owner can fix it — OAuth reconnection means clicking through Microsoft consent in
+the n8n credential UI. It cannot be done over the API.
+
+One piece of luck: the failure is at `Get Outreach Rows`, the *first* Excel node in the
+sender, so no run got far enough to half-write a row or send a duplicate. The data is
+consistent; the system was simply dead.
+
+**The real lesson is not the expiry — refresh tokens expire, that is normal. It is that an
+active workflow failed 21 times in a row and told nobody.** n8n supports an error workflow
+per workflow (`settings.errorWorkflow`) that fires on any production failure. Nothing here
+has one. That is the next thing to build once the credential is back, and it should have
+existed before anything was set live.
+
+### ⚙️ Automatic intake built (untested)
+
+The main workflow is no longer manual-only. Added:
+
+```
+Scheduled Intake (0 9-21 * * 1-5, Asia/Kolkata)
+  → Get Research Queue   (tblCompanies, all rows)
+  → Pick Next Company    (Code)
+  → Company Research AI  (existing chain, unchanged)
+```
+
+The manual trigger and `Test Company Input` are deliberately kept alongside, so on-demand
+testing still works. No node downstream referenced `Test Company Input` by name — the only
+coupling was six field names (`Company Name`, `website`, `country`, `industry`,
+`company_type`, `revenue`) — so `Pick Next Company` emits exactly those and nothing else in
+the chain needed touching.
+
+**One company per run, and that is a correctness requirement rather than a simplification.**
+Every lookup node downstream is marked `executeOnce`:
+
+```
+Get Existing Companies · Get Existing Opportunities · Get Existing Contacts
+Get Existing Signals · Get Outreach History · Get Company Contacts
+Get Suppression List · Get Clients · Hunter Domain Search
+```
+
+In a multi-company batch each of those would read its table once at the start and never see
+rows appended mid-run, so the second company would be assigned the same Company ID and
+Opportunity ID as the first. Running one per tick and scheduling more often avoids the
+problem outright instead of trying to work around `executeOnce`.
+
+Selection rules in `Pick Next Company`: skip statuses (`excluded`, `suppressed`,
+`do not contact`, `client`, `closed`, `disqualified`), never-researched companies first,
+then most overdue by `Next Research Date`. A hard `MIN_DAYS_BETWEEN_RESEARCH = 14` floor
+overrides `Next Research Date` — without it a badly written date would re-research the same
+company every tick and burn OpenAI credit re-deriving data already on file. Zero candidates
+returns `[]`, which halts the run; that is the normal idle state, not a failure.
+
+Rate: 13 runs per weekday = ~286 company researches/month. Each run costs three
+web-search AI calls, so this is the main OpenAI cost lever — one number to change.
+
+**Untested.** The verification run used the *manual* trigger (n8n prefers it when a
+workflow has both), so it went down the `Test Company Input` path and died at
+`Get Existing Companies` on the expired credential. `Pick Next Company` has never executed.
+It stays unverified, and the schedule stays **off**, until the credential is reconnected.
+
+### Current state: 37 nodes (main), 3 active workflows, sender LIVE but FAILING
 
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,
 approval/backfill helpers) were archived after use — they write to live tables and should
