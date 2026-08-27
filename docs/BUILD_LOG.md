@@ -1635,7 +1635,81 @@ AI spend per no-op. The pipeline is now waiting on supply, not on the owner. Pro
 Discovery still does not write into `tblCompanies`, and wiring that up is the next build:
 it is the difference between a pipeline that is *automatic* and one that is *fed*.
 
-### Current state: 37 nodes (main), main + sender both LIVE
+### 🔎 Discovery now writes into Companies — schedule 03:00 / 09:00 / 17:00 IST
+
+Owner asked for three discovery runs a day. Discovery previously only printed results to
+the screen, so a schedule alone would have searched into the void. Added:
+
+```
+Discovery Schedule (0 3,9,17 * * 1-5, Asia/Kolkata)
+  → Discovery Criteria → Prospect Discovery AI → Parse Candidates
+  → Get Existing Companies → Filter New Companies → Append New Companies → tblCompanies
+```
+
+Rows are appended with `Last Researched` **blank on purpose** — that is exactly what
+`Pick Next Company` reads as never-researched, so a discovered company goes to the front
+of the research queue on the next intake tick. That blank field is the whole join between
+the two workflows.
+
+**Company IDs are assigned at discovery time, not left blank.** `Assign Company ID`
+downstream begins with `rows.filter(r => r && r['Company ID'])`, so a row with no ID is
+invisible to it: research would mint a second ID and `Upsert Company`, which matches on
+Company ID, would append a duplicate rather than update the stub.
+
+**Intake moved to `30 9-21 * * 1-5`.** Both workflows assign Company IDs by reading the
+table and incrementing, and both previously fired on the hour — at 09:00 they could read
+the same max and mint the same ID. Moving intake to minute 30 removes the overlap rather
+than relying on the window being narrow.
+
+### 🔴 Fail-open on a bad read wrote five colliding Company IDs
+
+The first scheduled-shape run appended five genuinely good prospects — and numbered them
+**Grand 001–005, on top of the five companies that already held those IDs.**
+
+`Get Existing Companies` had returned five rows with **every field blank** (20.6s, no
+error). `maxId` therefore computed to 0, and the same empty read told the dedupe that no
+company existed, so nothing looked like a duplicate. One bad read, two failures, because
+the code trusted it implicitly.
+
+The very next run read correctly and assigned Grand 006 / Grand 007, which confirms the
+blank read was transient — most likely Graph throttling after several rapid table reads.
+**Transient is the point: the code has to survive it.**
+
+**Fix — fail closed, but only on the right signal.** The subtlety is telling a *failed*
+read from a *genuinely empty* table, because on an empty table `maxId = 0` is correct and
+must still seed `Grand 001`. `alwaysOutputData` makes an empty table arrive as a single
+synthetic `{}` item with no keys, while a row read from the sheet always carries all 40
+column keys even when the values are blank. That difference is the discriminator:
+
+```js
+const tableRows = rawRows.filter(r => Object.keys(r).length > 0);
+const existing  = tableRows.filter(r => norm(r['Company ID']) || norm(r['Company Name']));
+if (tableRows.length > 0 && existing.length === 0) throw new Error(...);
+```
+
+Unit-tested across all five cases: normal read → Grand 006; all-blank read → abort; empty
+table via synthetic item → Grand 001; no items at all → Grand 001; blank rows mixed with
+real ones → proceeds on the real ones.
+
+Skipping a discovery run costs one cycle. Corrupting the ID space costs the database.
+
+### ✏️ Correction: the 23-country brief was never the problem
+
+Recorded because the wrong conclusion was nearly acted on. A 23-country run returned
+`{"candidates":[]}` in 2.5 seconds with 9 output tokens — the model never searched. A
+second run of the *same* configuration then returned five strong candidates in 81 seconds,
+against a 74-second baseline and an instance ceiling of 180s.
+
+In between, `search_workflow_executions` reported that run as still `running` for over
+seven minutes after it had actually finished, and that stale status was briefly taken as
+evidence of an unbounded run. **Both n8n execution endpoints can serve stale in-flight
+status; only a settled result is trustworthy.**
+
+So the empty return is an intermittent flake, not a breadth problem. The market rotation
+was kept anyway — a focused brief is better BD than a 23-country sweep, and it reduces the
+surface for that flake — but it is a quality change, not a timeout fix.
+
+### Current state: 37 nodes (main) · main + sender LIVE · discovery built, NOT yet active
 
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,
 approval/backfill helpers) were archived after use — they write to live tables and should
