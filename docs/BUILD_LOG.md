@@ -1301,6 +1301,71 @@ Activation was safe to do immediately: the only Outreach row is Outreach ID 1, a
 The human approval gate is untouched and remains the core control — the system drafts and
 queues, a person still decides. What changed is that the decision now executes itself.
 
+### 🔧 Owner revision: unstated work arrangement now qualifies
+
+The remote-only gate shipped blocking three cases — `Hybrid`, `On-site`, and anything
+unstated. The owner revised it the same day: only an **explicit** hybrid or on-site
+requirement disqualifies. A posting that says nothing about arrangement is an opportunity.
+
+The judgement behind the revision is sound, and it overrides mine. I blocked `Not stated`
+by extending the never-invent rule to a new field. But never-invent governs what we
+*record as fact*, not how we *prioritise a lead* — and most job postings simply omit the
+line. Blocking silence would have discarded the majority of the funnel to avoid a
+mis-pitch that costs one ignored email. The gate is now a single condition:
+
+```js
+if (wa === 'hybrid' || wa === 'onsite') {
+  reasons.push('Role is ' + workArrangement + ' and Grandeur delivers remotely');
+}
+```
+
+The research tag stays exactly as it was — it still reports `Not stated` honestly rather
+than guessing `Remote`. Only what we *do* with that answer changed. That separation is
+worth keeping: research records the truth, policy decides what to do about it.
+
+### ✍️ Draft rewrite: from capability list to actual proposal
+
+The Aescape email was accurate and evidence-backed, and still generic where it counted. It
+closed with five services — "AP/AR, reconciliations, financial reporting, month-end close,
+and NetSuite support" — which reads as a brochure, and it never said what Grandeur is. A
+stranger receiving it had no idea who was writing.
+
+The prompt now specifies a five-part body:
+
+1. the verified signal, one specific sentence
+2. the concrete finance work that situation creates
+3. **who Grandeur is** — one plain sentence, since the reader has never heard of the firm
+4. the proposal: the specific work Grandeur would take on *here*, and how it would work
+5. the close, carrying `https://grandeuradvisory.com/` and a low-friction ask
+
+Three mechanisms do the real work:
+
+**The swap test.** Stated as a hard check before returning:
+
+> If this email could be sent to a different company by changing only the company name
+> and the person's name, it has FAILED. Rewrite it.
+
+**A cap on the pitch.** At most three pieces of proposed work, each traceable to something
+in the Evidence. The cap is the fix for the brochure problem — five services is not more
+persuasive than two, it is less, because it signals the sender did not read anything.
+
+**A ban on empty category words.** "Solutions", "support", "services", "processes",
+"operations" may not appear alone without saying support *with what, exactly*.
+
+Grandeur's own description is fixed text in the prompt, sourced from PROJECT_BRIEF §2 —
+the owner's own words — with `That description is the ONLY thing you may say about
+Grandeur. Do not extend it.` The company website is blocked by this environment's egress
+proxy, so it could not be read; using the owner's brief avoids inventing positioning that
+the real site might contradict. Pricing, contract terms, team size, turnaround times and
+years of experience are explicitly banned as unverified.
+
+One trap closed: `Evidence Summary` now begins with the internal `WORK ARRANGEMENT: ... |`
+routing tag, and without instruction the model would have quoted it into a customer-facing
+email. The prompt names the tag and says to ignore it.
+
+Word count moved 90–130 → 130–180. The old ceiling could not hold a signal, an
+introduction, a specific proposal and a link.
+
 ### Current state: 34 nodes (main), 3 active workflows, sender LIVE
 
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,

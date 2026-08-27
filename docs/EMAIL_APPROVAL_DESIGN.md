@@ -14,7 +14,9 @@ Agreed with owner 2026-08-24.
 | Approval detection | **Poll** — Excel cannot push change events to n8n |
 | Send window | **15:00–02:00 IST, Mon–Fri** — enforced in the cron *and* in `Build Send Queue` |
 | Send rate | **1 email per 10 minutes** — poll every 10 min, `SEND_BATCH_SIZE = 1` |
-| Eligible roles | **Remote only** — hybrid, on-site, and unstated are all blocked |
+| Eligible roles | **Not hybrid, not on-site** — only an explicit office requirement blocks; unstated qualifies |
+| Draft content | Signal → work it creates → who Grandeur is → named proposal → link + ask |
+| Website in body | `https://grandeuradvisory.com/`, exactly once, verbatim |
 | Workflow timezone | **`Asia/Kolkata`, pinned explicitly** on the sender — never inherited |
 
 ## Flow
