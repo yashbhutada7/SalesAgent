@@ -1577,7 +1577,65 @@ workflow has both), so it went down the `Test Company Input` path and died at
 `Get Existing Companies` on the expired credential. `Pick Next Company` has never executed.
 It stays unverified, and the schedule stays **off**, until the credential is reconnected.
 
-### Current state: 37 nodes (main), 3 active workflows, sender LIVE but FAILING
+### ✅ Credential restored, intake verified, pipeline LIVE
+
+Owner reconnected the Excel credential. Confirmed with a read-only probe rather than by
+waiting for the next cron tick:
+
+```
+Credential Working: true   Rows Read: 5
+Grandeur Advisory LLP · Verve Advisory Private Limited · LHH · Aescape · Afresh
+```
+
+The 16:40 UTC tick that still showed the error simply predated the reconnect. Also ruled
+out a duplicate-credential mix-up first — `list_credentials` shows exactly one
+`microsoftExcelOAuth2Api` (`t05ZuN05jLPuMapG`), the one every node references.
+
+**A near-miss worth recording.** Execution 141 showed Company Research returning
+`"last_researched": ""`, and `Pick Next Company` treats a blank `Last Researched` as
+*never researched*. If the column really were blank, the scheduler would have re-picked
+the same five companies forever, burning three web-search AI calls per tick and never
+advancing. Checked instead of assumed — the column is populated (`46260` / `46261`), so
+something downstream of the AI stamps it. The design holds, but only by verification.
+
+**Queue logic unit-tested locally** against the five real rows:
+
+| Case | Result |
+|---|---|
+| Today, all researched 1–2 days ago | `[]` — correct idle |
+| Company researched exactly 13 days ago | skipped |
+| Company researched exactly 14 days ago | eligible — floor is exact |
+| A never-researched company present | wins on priority |
+| `Company Status = Client` | excluded |
+| `Next Research Date` in the future | skipped |
+
+One test initially looked like a failure. It was a bad assertion, not a bug: the "+13 days"
+case measured from *now* while the companies were already ~1.7 days old, making it 14.7
+days since research. Re-tested holding `Last Researched` fixed and moving the clock, which
+is the only way to probe that boundary honestly.
+
+**Then verified in a real n8n execution down the schedule path.** n8n prefers the manual
+trigger when a workflow has both, so the manual trigger was temporarily disabled to force
+it (and re-enabled straight after):
+
+```
+triggerNode: Scheduled Intake        ← the path that matters
+Get Research Queue  → 5 rows
+Pick Next Company   → []             ← correct idle state
+lastNodeExecuted: Pick Next Company  ← halted cleanly, zero AI calls
+status: success
+```
+
+**`Grandeur BD Agent V1` is now published and active** (version
+`fad0e944-5b16-49e0-ba42-3ef202213c0c`). The pipeline runs itself.
+
+**It will idle until something feeds it.** All five companies were researched in the last
+two days, so `Pick Next Company` correctly returns nothing every tick — 6.5 seconds and no
+AI spend per no-op. The pipeline is now waiting on supply, not on the owner. Prospect
+Discovery still does not write into `tblCompanies`, and wiring that up is the next build:
+it is the difference between a pipeline that is *automatic* and one that is *fed*.
+
+### Current state: 37 nodes (main), main + sender both LIVE
 
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,
 approval/backfill helpers) were archived after use — they write to live tables and should
