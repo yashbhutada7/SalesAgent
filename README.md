@@ -17,6 +17,7 @@ scraper. Every lead must arrive with a reason.
 | [`docs/WORKFLOW_SPEC.md`](docs/WORKFLOW_SPEC.md) | Current build state — nodes, credentials, Excel schema, next stage |
 | [`docs/prompts/company-research.md`](docs/prompts/company-research.md) | The `Company Research AI` prompt, verbatim, plus observed behaviour |
 | [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) | Gaps, risks and decisions pending |
+| [`docs/DOMAIN_HEALTH.md`](docs/DOMAIN_HEALTH.md) | DNS, SPF/DKIM/DMARC and deliverability state of `grandeuradvisory.com` |
 | [`docs/SOURCE_TRANSCRIPT.md`](docs/SOURCE_TRANSCRIPT.md) | Raw source material this spec was derived from |
 
 ## Where things stand
