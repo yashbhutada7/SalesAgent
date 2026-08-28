@@ -1709,7 +1709,60 @@ So the empty return is an intermittent flake, not a breadth problem. The market 
 was kept anyway — a focused brief is better BD than a 23-country sweep, and it reduces the
 surface for that flake — but it is a quality change, not a timeout fix.
 
-### Current state: 37 nodes (main) · main + sender LIVE · discovery built, NOT yet active
+### 🏗️ Single ID authority — the fix that ended the ID bugs
+
+Two guards had already failed at the same job, so the design was wrong, not the threshold.
+Discovery and research were both minting Company IDs by reading the table and incrementing,
+so a bad read at either end corrupted the ID space. Two attempts to detect a bad read by
+counting blank rows both failed, because an emptied Excel table and a failed read produce
+the same shape — Excel always keeps one blank row, and `Get Existing Companies` returns one
+blank row per input item.
+
+**Research is now the only writer of Company IDs.**
+
+| | |
+|---|---|
+| Discovery | appends a stub: `Company Key` (domain), name, website, country. **`Company ID` blank** |
+| `Assign Company ID` | sees stubs — the old `rows.filter(r => r['Company ID'])` hid them — and mints the ID on first research |
+| `Upsert Company` | matches on **`Company Key`**, not `Company ID`, so the stub is filled in rather than duplicated |
+
+The guard is gone entirely. Nothing downstream depends on reading a max any more, so the
+worst a bad read can now do is let one duplicate through, which dedupe catches next run.
+That is a bounded, self-healing failure instead of a corrupted key space.
+
+**Verified end to end.** Discovery appended two stubs with blank IDs:
+
+```
+myfirst.tech  · myFirst   · Singapore   · Group Finance Manager hiring
+furiosa.ai    · FuriosaAI · South Korea · Senior Manager FP&A, IPO readiness
+```
+
+and the next intake run, via `Scheduled Intake`, picked one straight up:
+
+```
+Pick Next Company → myFirst · https://www.myfirst.tech/ · Singapore
+```
+
+The Discovery → Companies → Intake handoff is proven. Both halves of the pipeline are now
+joined by a blank `Last Researched`.
+
+### 🔴 BLOCKER: OpenAI credits exhausted
+
+```
+429 - You have no credits remaining. Add credits to continue using the API.
+code: credit_balance_exhausted
+```
+
+This stops everything AI-driven: discovery search, company/opportunity/contact research and
+draft writing. Excel and Outlook are unaffected.
+
+It also retrospectively explains the "empty return in 2.5 seconds with 9 output tokens"
+runs that were logged earlier as an intermittent model flake. That reading was probably
+wrong: the balance was draining, and a quota-limited call returning nothing looks identical
+to a model declining to search. Worth remembering — **an unexplained empty AI result is
+worth checking against billing before it is attributed to the model.**
+
+### Current state: all three workflows LIVE, blocked only on OpenAI credits
 
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,
 approval/backfill helpers) were archived after use — they write to live tables and should
