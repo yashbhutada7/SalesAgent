@@ -245,11 +245,15 @@ From Email | From Name | Subject | Body | Intent | Conversation ID | Notes
 *Out of Office*, *Unsubscribe*, *Other*. Auto-replies must be classified before they can
 be allowed to stop a sequence, otherwise a holiday responder silently kills a live lead.
 
-### (c) Grant `Mail.Read` to the Outlook credential
+### (c) ~~Grant `Mail.Read`~~ — NOT NEEDED, already works
 
-Reply handling needs to read the `accounting@grandeuradvisory.com` mailbox. This is the
-same Entra admin-consent flow as the Send As permission: an admin approves the added
-scope for the n8n app. Without it the reply watcher cannot be built at all.
+Tested on 2026-08-28 rather than assumed. The existing Outlook credential already reads the
+mailbox: a probe returned 3 messages, each carrying both `conversationId` and message `id`,
+which is exactly what reply matching needs.
+
+n8n's `microsoftOutlookOAuth2Api` credential requests `Mail.ReadWrite`, and read is a subset
+of that, so no additional Entra consent is required. **Worth generalising: test the
+capability before requesting an admin permission — the scope may already be granted.**
 
 ### (d) Build the Power Automate flow (instant approval)
 
