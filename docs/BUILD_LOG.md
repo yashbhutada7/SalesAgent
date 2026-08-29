@@ -1762,7 +1762,56 @@ wrong: the balance was draining, and a quota-limited call returning nothing look
 to a model declining to search. Worth remembering — **an unexplained empty AI result is
 worth checking against billing before it is attributed to the model.**
 
-### Current state: all three workflows LIVE, blocked only on OpenAI credits
+### ✍️ Signature added — and the Outlook one was never going to work
+
+The owner set a signature in Outlook and reasonably expected it to appear. It would not
+have. **An Outlook signature is applied by the Outlook client when a human composes;
+this workflow posts the body through the Graph `sendMail` API, which sends exactly what it
+is given and appends nothing.** Every email so far had no sign-off at all.
+
+The signature now lives in `Build Send Queue`:
+
+```
+-- 
+Yash Bhutada
+CEO & Founder, Grandeur Advisors LLP
+accounting@grandeuradvisory.com
+
+Website: https://grandeuradvisory.com/
+LinkedIn: https://www.linkedin.com/in/ca-yash-radheshyam-bhutada-223ab1100/
+Instagram: https://www.instagram.com/grandeuradvisorsllp/
+```
+
+**Plain text with bare URLs, not the logo-and-icons version, and that was a deliberate
+recommendation the owner accepted.** Rendering the original signature would have meant
+switching the email to HTML and hosting four images. On a domain with no sending
+reputation that trades inbox placement for polish: images are blocked by default in most
+clients, so the icons would arrive as broken boxes, and an image-heavy first contact is a
+recognised spam signal. Mail clients auto-linkify a bare URL, and none of these has
+trailing punctuation that could be absorbed into the link — the same trap that broke the
+body URL earlier.
+
+The supplied LinkedIn URL carried `?skipRedirect=true`, a session parameter rather than
+part of the profile address; stripped.
+
+`-- ` on its own line is the standard signature delimiter, so clients collapse it out of
+replies.
+
+### 🔴 The firm was calling itself two different names in one email
+
+Caught while fitting the signature. The signature says **Grandeur Advis*ors* LLP** and the
+registered entity is GRANDEUR ADVISORS LLP, but the draft prompt introduced the firm as
+"Grandeur Advis*ory* LLP" — taken from the project brief, and never questioned. The domain
+being `grandeuradvisory.com` is what made the error invisible.
+
+A cold email that names the sender's own company two different ways in two places is a
+credibility problem, not a typo. Corrected throughout the customer-facing prompt, with an
+explicit line so the model cannot drift back:
+
+> The firm's name is spelled "Grandeur Advisors LLP" - Advisors, never Advisory. The
+> website domain is grandeuradvisory.com, which is not the company name.
+
+### Current state: all three workflows LIVE and unblocked
 
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,
 approval/backfill helpers) were archived after use — they write to live tables and should
