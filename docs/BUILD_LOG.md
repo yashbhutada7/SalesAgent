@@ -1846,10 +1846,11 @@ The anchor regex ends on `[^\s<.,;:!?)\]]`, so a full stop after a link stays ou
 `href` — the same trap that broke the body link back when it was plain text, now handled
 in code instead of by instructing the model.
 
-Symbols are Unicode entities (`&#127760;` globe, `&#128188;` briefcase, `&#128247;` camera)
-rather than the real brand icons. Brand icons would need four hosted image files, and
-images are blocked by default in most mail clients, so they would arrive as broken boxes on
-exactly the first contact where that looks worst. Entities always render.
+The link row started as Unicode entities (`&#127760;` globe, `&#128188;` briefcase,
+`&#128247;` camera) standing in for brand icons, on the reasoning that images are blocked by
+default in most mail clients and would arrive as broken boxes. The owner rejected the
+briefcase and camera as the wrong marks and asked for them gone; the row is now plain
+linked text. See the logo entry below for where that landed.
 
 Verified by sending the real conversion and signature to `info@grandeuradvisory.com`
 through the same Outlook node and credential: `{ success: true }`. Test workflow archived.
@@ -1873,3 +1874,39 @@ different decision from researching on one.
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,
 approval/backfill helpers) were archived after use — they write to live tables and should
 not be runnable by accident.
+
+### 🖼️ Signature final form: logo image, plain text links
+
+Owner supplied the hosted logo and closed the icon question:
+
+> Grandeur Logo: https://grandeuradvisory.com/images/Grandeur-Advisors-Logo.png
+> Keep other thing as it is, don't add the images for website, linkedin and instagram
+
+So the signature carries **exactly one image** — the firm logo, above the name — and the
+`Website | LinkedIn | Instagram` row is plain linked text with no symbols.
+
+That split is the right one on the blocked-images problem. A blocked logo degrades to its
+`alt` text, "Grandeur Advisors LLP", which is a correct signature line either way. Blocked
+inline icons in a link row degrade to three broken-image boxes between pipes, which is
+worse than no icons at all. One image that fails gracefully, none that fail badly.
+
+```js
+const LOGO_URL = 'https://grandeuradvisory.com/images/Grandeur-Advisors-Logo.png';
+'<a href="https://grandeuradvisory.com/" style="text-decoration:none;">',
+'<img src="' + LOGO_URL + '" alt="Grandeur Advisors LLP" width="110"',
+'     style="display:block;border:0;outline:none;width:110px;height:auto;">',
+'</a>',
+```
+
+`width` is set as both an HTML attribute and a CSS property because Outlook desktop ignores
+the CSS one and the attribute-only fallback is what old clients read. `display:block`
+suppresses the descender gap that inline images leave under them.
+
+**The logo URL itself is unverified from here.** This environment's egress proxy blocks
+`grandeuradvisory.com`, so a fetch cannot distinguish a working URL from a 404. The send
+path proves the HTML is well-formed and the message is delivered; only the owner opening
+the mail proves the image resolves.
+
+Verified again by sending through the same Outlook node and credential — subject
+`[TEST 2] Signature with logo`, execution 265, `{ success: true }`, 2.4s. Test workflow
+`3w8hwe8XOJkTIvnj` archived.
