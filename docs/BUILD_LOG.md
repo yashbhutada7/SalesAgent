@@ -1811,7 +1811,64 @@ explicit line so the model cannot drift back:
 > The firm's name is spelled "Grandeur Advisors LLP" - Advisors, never Advisory. The
 > website domain is grandeuradvisory.com, which is not the company name.
 
-### Current state: all three workflows LIVE and unblocked
+### 🔴 Draft vs published: edits to an ACTIVE workflow do not go live
+
+Caught by reading a node back after editing it, not by any error. The workflow detail
+showed two different states at once:
+
+```
+draft   (versionId 0678406b)  bodyContentType "html"  + signature code
+ACTIVE  (activeVersionId ca6bcea2)  bodyContentType "Text"  + old code, no signature
+```
+
+**`update_workflow` writes the DRAFT. An active workflow keeps executing its last
+PUBLISHED version until `publish_workflow` is called again.** Publishing once at activation
+is not enough — every subsequent edit needs republishing.
+
+This had already bitten silently: the signature added in the previous session went to the
+draft and was never live, so emails would still have gone out unsigned. The seven-day cron
+changes and the Advisors name fix were in the same state. All three workflows republished.
+
+**Rule from here: after editing an active workflow, publish it, and confirm
+`activeVersionId` now equals the new `versionId`.** A successful `appliedOperations` count
+says the draft was saved, nothing more.
+
+### 🎨 HTML signature with linked text
+
+Owner wants `Website | LinkedIn | Instagram` as linked text with symbols, which requires
+HTML. That made converting the body mandatory rather than cosmetic: the drafting AI writes
+plain text with blank lines between paragraphs, and **HTML collapses every newline**, so
+sending the draft raw would deliver a carefully structured six-paragraph email as one
+unbroken block. `Build Send Queue` now escapes the body, turns bare URLs into real anchors,
+and converts newlines to `<br>`.
+
+The anchor regex ends on `[^\s<.,;:!?)\]]`, so a full stop after a link stays outside the
+`href` — the same trap that broke the body link back when it was plain text, now handled
+in code instead of by instructing the model.
+
+Symbols are Unicode entities (`&#127760;` globe, `&#128188;` briefcase, `&#128247;` camera)
+rather than the real brand icons. Brand icons would need four hosted image files, and
+images are blocked by default in most mail clients, so they would arrive as broken boxes on
+exactly the first contact where that looks worst. Entities always render.
+
+Verified by sending the real conversion and signature to `info@grandeuradvisory.com`
+through the same Outlook node and credential: `{ success: true }`. Test workflow archived.
+
+### 📅 Research and discovery now run every day
+
+Owner: search all seven days, not only weekdays.
+
+```
+Discovery  0 3,9,17 * * *    was * * 1-5   15 -> 21 runs/week
+Intake     30 9-21 * * *     was * * 1-5   65 -> 91 runs/week
+```
+
+Intake stays on minute 30 so it never coincides with discovery on the hour, since both
+touch the Companies table. **Sending is deliberately unchanged at 15:00-02:00 IST Monday
+to Friday** — that was a separate owner rule, and cold email landing on a Sunday is a
+different decision from researching on one.
+
+### Current state: all three workflows LIVE and published
 
 Diagnostic workflows built during this session (outreach inspector, opportunities dump,
 approval/backfill helpers) were archived after use — they write to live tables and should

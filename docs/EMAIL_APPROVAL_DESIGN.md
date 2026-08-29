@@ -19,7 +19,8 @@ Agreed with owner 2026-08-24.
 | The question | "Are you looking for &lt;what the posting asks the hire to own&gt;?" — in the evidence's own terms |
 | Website in body | `https://grandeuradvisory.com/`, exactly once, verbatim |
 | Signature | Appended by `Build Send Queue`, **not** by Outlook — Graph sendMail adds nothing |
-| Signature format | Plain text, bare URLs, no logo or icon images |
+| Signature format | **HTML**, linked text `Website \| LinkedIn \| Instagram`, Unicode symbols, no hosted images |
+| Body conversion | Escaped, URLs anchored, newlines to `<br>` — HTML collapses newlines |
 | Firm name | **Grandeur Advisors LLP** — Advisors, never Advisory |
 | Workflow timezone | **`Asia/Kolkata`, pinned explicitly** on the sender — never inherited |
 
