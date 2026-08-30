@@ -1910,3 +1910,120 @@ the mail proves the image resolves.
 Verified again by sending through the same Outlook node and credential — subject
 `[TEST 2] Signature with logo`, execution 265, `{ success: true }`, 2.4s. Test workflow
 `3w8hwe8XOJkTIvnj` archived.
+
+## 2026-08-30 - The Outreach tab was empty because the gate ran before the contacts existed
+
+Owner: *"I'm not getting anything in 'Outreach' tab, can you check what's wrong with the sheet?"*
+
+The sheet was fine. `Table6` read cleanly and returned **0 rows**. Nothing was wrong with
+Excel — nothing had ever been written to it since it was cleared, and nothing ever would
+have been.
+
+### The bug
+
+`Append Outreach Draft` had not executed once in 24 hours of hourly runs. Tracing the graph
+showed why — two branches leave `Assign Opportunity ID` and they race:
+
+```
+Assign Opportunity ID ─┬─> Contact Research AI -> Hunter -> Assign Contact IDs
+                       │      -> Merge Contacts -> Upsert Contact      (writes contacts)
+                       │
+                       └─> Get Company Contacts -> ... -> Check Outreach Eligibility
+                                                              (reads contacts)
+```
+
+The eligibility branch has **no dependency** on the contact branch, and it is much faster —
+four Excel reads against two AI calls plus a Hunter lookup and a write. Execution 280 makes
+the ordering explicit:
+
+```
+Get Company Contacts        executionIndex 21   t+84.8s   <- reads the sheet
+Check Outreach Eligibility  executionIndex 25   t+101.9s  <- decides
+Upsert Contact              executionIndex 31   t+110.9s  <- writes the contact
+```
+
+The gate decided nine seconds before the contact it needed was written. So every company
+failed `No contactable decision maker with a verified email` on the one run that found its
+contact — and `Pick Next Company` enforces a 14-day floor, so that company was never offered
+again. **The pipeline could not produce a draft for any company, ever.** The first email
+(Aescape, 26 Aug) predates the contact stage moving into this shape, which is why it worked
+once and never again.
+
+This is the same class of mistake as the `Stamp Opportunity Last Outreach` bug: assuming a
+parallel branch in n8n has an ordering it was never given. Branches from one node are
+concurrent. If a branch reads what another branch writes, it needs an edge saying so.
+
+### The fix
+
+Give it the edge. `Get Company Contacts` now hangs off `Upsert Contact` instead of
+`Assign Opportunity ID`, so the read happens after the write. The gate additionally unions
+the in-run rows straight from `Upsert Contact`, so a lagging Graph read cannot reintroduce
+the fault:
+
+```js
+const sheetContacts = $('Get Company Contacts').all()
+  .map(i => i.json).filter(r => r && norm(r['Contact ID']));
+const runContacts = $('Upsert Contact').all()
+  .map(i => i.json).filter(r => r && norm(r['Contact ID']));
+
+const contactsById = {};
+for (const c of sheetContacts) contactsById[idKey(c['Contact ID'])] = c;
+for (const c of runContacts)   contactsById[idKey(c['Contact ID'])] = c;  // newest wins
+const allContacts = Object.keys(contactsById).map(k => contactsById[k]);
+```
+
+**Known cost of the rewire:** when contact discovery yields nothing at all, `Upsert Contact`
+gets zero items, so the eligibility branch no longer runs and no "ineligible" line is logged.
+The outcome is unchanged — no contact is not eligible — but the diagnostic is lost. That was
+judged worth it; the reasons are still logged whenever any contact exists.
+
+### Verification
+
+Re-running Afresh, the previous "scored 82, found no contacts" case, moved
+`Contacts Found For Company` from **0 to 1**. It still stops, but now on the real reason —
+Hunter has no email for anyone at afresh.com.
+
+Then the three companies that already had verified CFO emails and were locked out by the
+14-day floor were pushed through the manual input. All three drafted:
+
+| Outreach ID | Company | Score | Contact | Signal |
+|---|---|---|---|---|
+| 1 | AssetWatch | 88 | Bill Ruff, CFO | Controller hire leading ERP selection across multi-entity, multi-currency ops |
+| 2 | Deepgram | 92 | Jason Rubinstein, CFO | Migrating off Xero, evaluating NetSuite/Rillet, first audit and SOX readiness |
+| 3 | Coder | 82 | Inna Morgounova, CFO | First EMEA Senior Accountant, UK entity already served by third-party firms |
+
+All three sit at `Pending Approval`. Nothing was sent.
+
+### Funnel as it actually stands
+
+Of 16 opportunities researched before the fix:
+
+```
+5   blocked by Hybrid / On-site      working as designed
+5   scored below 50                  working as designed
+10  no reachable contact             <- the ceiling
+3   cleared everything
+```
+
+The arrangement and score gates are doing their job. **Contact enrichment is the binding
+constraint**, exactly as flagged on 26 Aug: Hunter finds an email for roughly a third of
+companies, and no email means no draft however good the signal. Apollo.io as a second
+enrichment stage remains the recommendation.
+
+### Separate finding: contacts attached to the wrong company
+
+`Contact Research AI` sometimes returns a person from a *different* company that matches the
+signal text rather than the company it was given. Contact 17, written 30 Aug under
+`Grand 012` (Leyden Labs, Netherlands biotech), is Michael O'Grady — CFO of **Permutive**, a
+UK adtech firm. Its own Notes field cites "Permutive's official About page" and reasons that
+"the Sr. Financial Controller vacancy signal matches a current Permutive vacancy".
+
+The model is matching on the *vacancy description* instead of anchoring on the company.
+Older rows show the same shape (Nahdi Medical filed under `ispace, inc.`; Freight In Time
+under `myFirst`), though those may also be ID drift from the Companies rebuild.
+
+Blast radius is currently limited: these rows carry no email, and the gate requires one, so
+they cannot be emailed. The risk is that `Hunter Find Email` is handed the right domain and
+the wrong person's name and happens to resolve an address. Not yet fixed — it needs a
+prompt change to `Contact Research AI` that anchors hard on the company identity, and that
+change deserves its own verification pass.
