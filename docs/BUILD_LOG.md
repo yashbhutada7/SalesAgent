@@ -2027,3 +2027,107 @@ they cannot be emailed. The risk is that `Hunter Find Email` is handed the right
 the wrong person's name and happens to resolve an address. Not yet fixed — it needs a
 prompt change to `Contact Research AI` that anchors hard on the company identity, and that
 change deserves its own verification pass.
+
+## 2026-09-01 - Duplicate rows: two different dedup bugs
+
+Owner: *"Please do not add anything which is not remote as per our rule. I don't want to
+add any garbage in here"*
+
+The Remote-only rule needed no change — `Check Outreach Eligibility` already blocks an
+explicit Hybrid or On-site arrangement, which is why Odyssey (78, verified CFO email),
+STABL Energy (76, verified CFO email) and Reap (45) are not drafted and will not be. That is
+the gate working, not failing. The real complaint was duplicate rows, and there were two
+independent causes.
+
+### Bug 1 - the same person keyed two different ways
+
+`Assign Contact IDs` deduped on one collapsed key:
+
+```js
+const keyOf = (p) => lower(p.email) || lower(p.name);
+```
+
+A person does not always arrive the same way. Hunter finds them *with* an email; the contact
+research model finds them *without* one. So the same human keys as
+`grand 006||wruff@assetwatch.com` on the run that had the email and
+`grand 006||bill ruff` on the run that did not. Those never match, so a second row is minted:
+
+```
+Bill Ruff        contacts  7 and 20
+Jason Rubinstein contacts  9 and 21
+Inna Morgounova  contacts 13 and 23
+```
+
+Execution 289 shows it plainly — the duplicate row came out with `"Contact ID": "020"` and
+`"Email": ""`, the email-less sighting of a person already on file with a verified address.
+
+**I first blamed a type mismatch** — `"007"` sent against a stored `7` — and that was wrong.
+The duplicates carry *new* ids, not repeated ones, so the upsert was never the problem; the
+lookup was. Worth recording because the type theory was plausible and cost a detour.
+
+Fixed by indexing existing rows under **both** identifiers and accepting a hit on either:
+
+```js
+const byEmail = {};
+const byName = {};
+for (const r of existingRows) {
+  const co = idKey(r['Company ID']);
+  if (lower(r['Email'])) byEmail[co + '||' + lower(r['Email'])] = r;
+  if (lower(r['Name']))  byName[co + '||' + lower(r['Name'])]  = r;
+}
+```
+
+Matching alone would have been a downgrade, though: the email-less sighting would then
+*overwrite* the verified address with a blank. So every field now keeps whichever value is
+non-empty, and the verification status travels with the address it was earned for:
+
+```js
+const keep = (fresh, old) => norm(fresh) || norm(old);
+```
+
+### Bug 2 - the model renames the opportunity, so it becomes a new one
+
+`Assign Opportunity ID` keyed on company **+ Opportunity Type**. The research model describes
+the same underlying signal differently between runs — AssetWatch's ERP hire came back as
+`Finance Operations` once and `ERP Implementation or Transformation` the next time — so
+re-research minted a second row every time: 8 and 19, 9 and 20, 11 and 21. That is 23
+opportunity rows for 18 companies.
+
+Now keyed on the company alone. A company holds one opportunity row, refreshed in place,
+keeping its original `First Detected`. **This is a deliberate narrowing**: a company can no
+longer hold two genuinely distinct opportunities. That costs nothing today because outreach
+is already company-scoped — one email per company, never one per opportunity — so the second
+row had no consumer. If per-opportunity outreach is ever wanted, this is the decision to
+revisit.
+
+Both nodes now pass the sheet's own id value straight through on a match, with its original
+type, rather than re-deriving a zero-padded string, so the upsert updates the row instead of
+appending beside it.
+
+### NOT VERIFIED - OpenAI credits are exhausted again
+
+The verification run failed at the first node:
+
+```
+429  code: credit_balance_exhausted
+"You have no credits remaining."
+```
+
+Both fixes are published (`activeVersionId 68fb2f52`) but **neither has been observed
+working**. The test to run once credits are restored: execute the manual trigger against
+Afresh and confirm it reuses Opportunity 17 and Contact 18 rather than minting 24 and 27.
+
+Every scheduled run is also dead until then — the pipeline cannot get past company research.
+This is the **second** silent outage of this kind (Excel OAuth expiry on 28 Aug ran 21 failed
+executions over 3.5 hours before anyone noticed). There is still no error workflow. That
+remains the highest-value unbuilt piece.
+
+### Left alone, deliberately
+
+- **Duplicate company: `myFirst` is both Grand 001 and Grand 002**, same Company Key
+  `myfirst.tech`. Predates the switch to matching on Company Key, so `Upsert Company` cannot
+  have caused it and will not repeat it. Cleaning it means deleting a row — an owner decision,
+  not mine.
+- **Blank Company ID on 8 rows** (SwiftConnect, Spreedly, 9amHealth, Hypersonix, Tracksuit,
+  Askable, New Dawn, ROBIC). Not garbage: discovery stubs awaiting research, which mints the
+  ID. Reads as broken though, so writing `Queued for research` into Company Status is offered.
