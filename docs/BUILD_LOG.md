@@ -2131,3 +2131,93 @@ remains the highest-value unbuilt piece.
 - **Blank Company ID on 8 rows** (SwiftConnect, Spreedly, 9amHealth, Hypersonix, Tracksuit,
   Askable, New Dawn, ROBIC). Not garbage: discovery stubs awaiting research, which mints the
   ID. Reads as broken though, so writing `Queued for research` into Company Status is offered.
+
+## 2026-09-01 - Dedup fixes verified, and Hunter is failing silently
+
+Credits restored, so the two dedup fixes from earlier today were finally exercised.
+
+### Verified
+
+Baseline, the Afresh run, then the same audit again:
+
+```
+                before      after
+contacts          26          26
+opportunities     23          23
+companies         26          26
+```
+
+`Assign Opportunity ID` returned `Opportunity ID: 17, Is New Opportunity: false` with
+`First Detected: 46216` carried over from the original row. `Assign Contact IDs` returned
+`Contact ID: 18, Is New Contact: false`. Before the fix this run would have minted
+Opportunity 24 and Contact 27.
+
+The opportunity case is the better demonstration: the model relabelled Afresh's signal
+`Finance Team Expansion` this time, and the row matched anyway — under the old
+company + type key that rename alone was enough to mint a duplicate.
+
+Row counts identical either side also proves the second half of the fix: passing the sheet's
+own id through with its original type makes the upsert **update** the row rather than append
+beside it. That path had never actually been exercised before today — every previous write
+was an append — so it was untested, not proven.
+
+### New finding: Hunter errors are indistinguishable from "no contacts"
+
+`Hunter Domain Search` returned this for Afresh:
+
+```json
+{"error":"Bad request - please check your parameters"}
+```
+
+Not an empty result. An error. The domain expression resolved correctly
+(`https://www.afresh.com` -> `afresh.com`), so the request was well formed from our side.
+
+The node carries `onError: continueRegularOutput` and `alwaysOutputData: true`. Both are
+reasonable in isolation — one bad enrichment should not kill a run — but together they turn
+an API failure into an ordinary empty result. `Assign Contact IDs` finds no Hunter people,
+the gate reports `No contactable decision maker with a verified email`, and the company is
+written off for 14 days.
+
+**This invalidates a number I gave the owner.** I reported "10 of 18 companies have no
+reachable contact" and called contact enrichment the binding constraint. Some unknown share
+of those ten are Hunter errors being swallowed, not companies without findable emails.
+Afresh in particular has scored 76-82 across three separate runs and been blocked every time
+on a contact gate that may never have run properly.
+
+Two things follow, and neither is a code change I should make blind:
+1. The owner needs to check the Hunter account — plan limits and monthly request quota. At
+   ~13 companies/day this makes ~390 domain searches a month before email-finder calls.
+2. A Hunter error must be recorded as an error, not as silence. Minimum: detect
+   `json.error` after the node and stamp the Contacts row with
+   `Email Verification Status = Lookup Failed`, so the sheet distinguishes "nobody found"
+   from "lookup broken".
+
+### Cost structure, measured
+
+All four AI nodes run `chat-latest`, the flagship tier. Three of the four have web search on
+at `medium` context:
+
+```
+Company Research AI    chat-latest   webSearch medium   12,690 prompt chars
+Opportunity Research   chat-latest   webSearch medium   10,416
+Contact Research AI    chat-latest   webSearch medium    4,137
+Outreach Draft AI      chat-latest   no search           7,607
+```
+
+Intake is `30 9-21 * * *`, so 13 runs a day, each researching at most one company: roughly 39
+web-search calls a day. Against the owner's reported ~$8/day that is about $0.21 a call,
+which is the right order for flagship plus medium search context.
+
+Output is about 2 drafts a day. **So the pipeline costs roughly $4 per draft.**
+
+The structural waste is the ordering. Every company gets three web-search AI calls *before*
+anything checks whether it has a contactable email — and the cheap step that decides it
+(Hunter) runs last, and is currently broken. The domain is known from discovery
+(`Company Key` is the domain), so Hunter needs no AI input at all and could run first.
+
+Cost per day is the wrong metric to optimise, though, and worth stating plainly: send
+capacity is 66 emails a day (one per 10 minutes, 15:00-02:00) against ~2 drafts produced.
+The pipeline is throughput-starved, not cost-bound. Cutting discovery volume would cut spend
+and drafts in the same proportion and improve nothing. The only changes worth making are the
+ones that lower cost per *draft*: stop paying for companies that cannot be contacted, and
+stop paying flagship prices for field extraction.
