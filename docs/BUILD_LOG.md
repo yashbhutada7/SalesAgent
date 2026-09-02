@@ -2221,3 +2221,98 @@ The pipeline is throughput-starved, not cost-bound. Cutting discovery volume wou
 and drafts in the same proportion and improve nothing. The only changes worth making are the
 ones that lower cost per *draft*: stop paying for companies that cannot be contacted, and
 stop paying flagship prices for field extraction.
+
+## 2026-09-02 - Hunter moved to the front, and Excel nodes learn to retry
+
+Owner approved levers 1 and 2 from the cost analysis. Lever 1 is built. Lever 2 is
+deliberately **not** started - see the note at the end.
+
+### The reordering
+
+`Hunter Domain Search` was step 7 of 10, after all three web-search AI calls. It is now
+step 2, before any of them. Nothing about the lookup ever needed AI: `Company Key` is the
+bare domain, written by discovery, so the enrichment call can be made the moment a company
+is picked.
+
+```
+                      before                        after
+1   Pick Next Company          free    Pick Next Company            free
+2   Company Research AI        $$$     Normalize Domain             free
+3   Upsert Company             free    Hunter Domain Search        ~free
+4   Opportunity Research       $$$     Contact Gate                 free
+5   Upsert Opportunity         free    Proceed With Research?       free
+6   Contact Research AI        $$$       false -> Defer Company, END, $0.00
+7   Hunter Domain Search      ~free      true  -> the existing chain, unchanged
+8   Upsert Contact             free
+9   Check Eligibility          free
+10  Outreach Draft AI          $$
+```
+
+Three new Code nodes and an IF. `Normalize Domain` accepts either entry point - the
+scheduled queue and the manual test input emit the same six lowercase keys - and adds the
+domain. `Contact Gate` counts usable emails and decides. `Build Defer Row` and
+`Defer Company` write the deferral.
+
+### The rule the gate is built around
+
+**Gate on "Hunter said no". Never gate on "Hunter didn't answer."**
+
+Afresh returns `{"error":"Bad request - please check your parameters"}`, not an empty list.
+Treating that as "no contacts" is what wrote Afresh off three times at step 9. Moving the
+same mistake to step 3 would make it cheaper to hit and therefore more frequent. So the
+gate fails **open**: an error, or a domain it cannot parse, proceeds to research.
+
+Verified on run 512, and again on 526:
+
+```
+Normalize Domain      executionIndex 2   domain: afresh.com
+Hunter Domain Search  executionIndex 3   {"error":"Bad request - please check your parameters"}
+Contact Gate          executionIndex 4   proceed: true
+                                         Hunter Status: Lookup Failed
+```
+
+Indices 2, 3, 4 - Hunter now settles before the first AI call, and the error routed to
+proceed rather than to defer.
+
+### The deferral had to reach into Pick Next Company
+
+A company stopped at the gate has never been researched, so `Last Researched` stays blank -
+and `Pick Next Company` sent every never-researched company straight to the front of the
+queue. It would have re-picked the same company on the very next tick, forever. The
+`Next Research Date` check existed but sat inside the already-researched branch only. It is
+now the first thing checked, above the never-researched fast path. `Defer Company` writes
+that date 30 days out, and carries the whole existing row forward rather than three fields,
+because a worksheet upsert writes the columns it is handed and would otherwise blank the rest.
+
+### Excel nodes now retry
+
+Run 512 died at `Upsert Contact` on a Graph `503 FileOpenHostServiceUnavailable` - Microsoft
+overloaded, asking callers to retry after a cooldown. Three paid AI calls of completed
+research were thrown away because a spreadsheet write blinked. No Excel node had retry set;
+all fifteen now do, three tries, 2s apart.
+
+### Verified, and not
+
+- **Hunter-first gate and fail-open**: verified, runs 512 and 526.
+- **Opportunity reuse under the new ordering**: verified, run 526 returned Opportunity 17.
+- **Excel retries**: applied, but the 503 did not recur, so the retry path itself is unexercised.
+- **Contact matching on LinkedIn and first+last name**: applied, **NOT verified**.
+
+That last one came out of run 526, which created Contact 41 beside Contact 18 for one
+person: the model returned `Erica Eaton Hanson` where the sheet held `Erica Hanson`, and a
+full-name key does not survive an inserted middle name. Existing rows are now also indexed
+by LinkedIn URL and by first-plus-last token. The confirming run (528) produced **zero**
+contacts - Hunter errored and the research model returned nobody - so it proves only that no
+duplicate was added, and for the wrong reason. The fix is unproven until a run finds a
+person already on file.
+
+**The sheet currently holds that duplicate**: contacts 18 and 41 are both Erica Hanson at
+Afresh. Deleting one is an owner decision.
+
+### Lever 2 is not started, on purpose
+
+Model tiering waits on one measurement the owner has to take: the split between the
+per-call web-search fee and token cost in the OpenAI usage dashboard. Search is billed
+separately and the fee does not change with the model, so if search dominates, swapping
+Company Research to a mini tier saves very little. Lever 1 avoids both, which is why it went
+first and alone.
