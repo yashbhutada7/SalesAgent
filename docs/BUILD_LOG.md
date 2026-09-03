@@ -2316,3 +2316,71 @@ per-call web-search fee and token cost in the OpenAI usage dashboard. Search is 
 separately and the fee does not change with the model, so if search dominates, swapping
 Company Research to a mini tier saves very little. Lever 1 avoids both, which is why it went
 first and alone.
+
+## 2026-09-02 (later) - Reply detection built, not yet verified
+
+Owner confirmed both schema changes, and both check out against the live workbook:
+
+```
+Responses  {00000000-0001-0000-0600-000000000000}  tblResponses {..FFFF05000000}
+           all 12 columns present
+Table6     Sequence Step / Sent Message ID / Conversation ID  all present
+```
+
+Owner also settled the after-midnight edge by fixing the follow-up send at **17:00 IST**.
+That removes the ambiguity entirely rather than working around it: 17:00 is nowhere near the
+date boundary, so the day a follow-up is sent is never in question. The 02:00 tail of the
+window still applies to first-touch sends.
+
+### Grandeur BD - Reply Detection (`lAufPqbyL5XBBbEv`) - BUILT, INACTIVE, UNTESTED
+
+```
+Reply Poll (*/30 * * * *)
+  -> Fetch Recent Mail      Outlook getAll, last 4 days, 60 max
+  -> Read Outreach          Table6        executeOnce
+  -> Read Contacts          tblContacts   executeOnce
+  -> Read Responses         tblResponses  executeOnce
+  -> Match Replies          Code
+  -> Append Response        tblResponses
+  -> Build Replied Rows     Code
+  -> Mark Outreach Replied  Table6 upsert on Outreach ID
+```
+
+**Matching is two-tier.** `Conversation ID` is the exact match, but the sender has never
+written that column - it only just came into existence - so every outreach on file has it
+blank. The fallback matches the sender's address against `tblContacts.Email` and picks that
+contact's most recent *sent* outreach row. That fallback is what makes the workflow useful
+today; conversation-id matching only starts contributing once the sender records it.
+
+**Idempotency rides in Notes.** `tblResponses` has no column for the Outlook message id, and
+adding one is the owner's call, so each row's Notes begins `msgid:<id> | ...` and the next
+poll reads it back. Without it a 30-minute poll would re-append the same reply 48 times a day.
+
+**Intent is rule-based, deliberately.** Out of Office / Opt Out / Bounce / Not Interested /
+Interested, defaulting to `Needs Review`. An AI call per inbound message would put spend on
+the one component that has to run around the clock, and the owner reads the body column
+anyway. Anything the rules do not recognise is flagged for a human rather than guessed at.
+
+**A reply stops the whole company, not the thread.** `Build Replied Rows` sets
+`Outreach Status = Replied` on every outreach row sharing that Company ID, carrying each
+whole row forward so the upsert cannot blank the columns it was not handed - the same trap
+as `Defer Company`.
+
+### Status: not verified
+
+The owner declined the test execution, which is a fair call - it reads a live mailbox and can
+write to the sheet. **Nothing about this workflow has been observed working.** It is saved
+and inactive; it will not run until published.
+
+Worth noting the test would have been weak anyway: the Outreach table holds four drafts and
+zero sends, so `sentByContact` is empty and no inbound mail could match. A real check needs
+at least one sent email with a reply against it.
+
+### Still missing for follow-ups
+
+The sender does not record `Sent Message ID` or `Conversation ID` at send time. Microsoft
+Graph `sendMail` returns 202 with no body, so the id is not simply available - it needs
+either a Sent Items lookup after the send, or a switch to create-draft-then-send, which
+returns the id up front. **Until that exists, a follow-up cannot go in the original thread**;
+it would arrive as a separate new email, which reads worse than not following up at all.
+That is the next piece, and it belongs in the Sender, not the sequencer.
