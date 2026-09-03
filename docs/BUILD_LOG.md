@@ -2564,3 +2564,67 @@ No follow-up has actually been sent, because none is due yet and the two sent ro
 un-threadable. The first real follow-up fires three working days after the next send through
 the new sender, and that is also the first live test of message/reply recipient handling -
 the one behaviour I could not verify without a real threaded message to reply to.
+
+## 2026-09-03 (later) - The Hunter "Bad request" was one number: limit 20
+
+Owner asked to reduce cost and, first, how to stop follow-ups to someone who complained.
+
+### Root cause, proven
+
+The Hunter domain-search "Bad request" that had failed EVERY call since 2026-09-01 was not
+the credential, not the domain, not the filters. It was `limit: 20`.
+
+A throwaway probe (archived) isolated it against identical everything else:
+
+```
+domain afresh.com, filters type:personal, limit 20  ->  {"error":"Bad request"}
+domain afresh.com, filters type:personal, limit 10  ->  tom.mann@afresh.com  (+ 9 more)
+```
+
+The Hunter plan caps domain-search results at 10, so any `limit` above 10 returns HTTP 400.
+The node had shipped with `limit: 20`, so it 400'd on every domain, forever, silently
+(the gate fails open, so the failures never surfaced as errors - exactly the swallow the
+gate was written to avoid, caught here only because the cost question forced a look).
+
+The diagnosis took two wrong turns worth recording: first "it's the filters" (disproved -
+stripe.com worked WITH filters), then "it's the domain expression" (disproved - the same
+domain that fails in the workflow returns emails in the probe with a literal). Only a
+controlled A/B on `limit` alone settled it. Lesson: when a call fails in situ but works in a
+probe, bisect the config difference by difference rather than trusting the first plausible
+story.
+
+### Fixed and verified
+
+`limit` set to 10, published `99f1ee69`. Re-ran the main workflow on Afresh:
+
+```
+Hunter Domain Search -> 10 emails (tom.mann@, jake.laws@, christopher.walsh@ ...)
+Contact Gate -> Hunter Emails Found: 10, Hunter Error: "", Hunter Status: OK, proceed: true
+```
+
+### Why this is bigger than cost
+
+This one line fixes TWO things at once:
+
+1. **Cost (Lever 1 now real).** The gate can finally see whether a domain has findable
+   emails. A domain with none now DEFERS before the three web-search AI calls - which is the
+   whole point of the gate and where the saving lands. Until today it saved nothing because
+   every call errored and failed open.
+2. **The contact ceiling.** "10 of 18 companies have no reachable email" was the pipeline's
+   binding constraint - and an unknown share of it was this swallowed error, not genuinely
+   empty domains. Hunter now returns up to 10 verified emails per company. That figure should
+   improve materially on the next full discovery cycle.
+
+Cosmetic note: Contact Gate's Gate Note reads "none found" even when emails ARE found,
+because the note has only error/none-found branches. Harmless - the note is only consumed on
+the defer path, where emailCount is always 0, so it is accurate wherever it is actually
+written. Left as-is.
+
+### Still pending in this session's work
+
+- Wire the Suppression sheet into the follow-up sequencer (a suppressed company should stop
+  follow-ups too, not just first sends) - directly answers the owner's "how do I stop
+  follow-ups" question. The immediate manual lever today is Do Not Contact = Yes on the
+  contact, which the sequencer already honours.
+- Lever 2: move Company Research and Contact Research off the flagship model, verified with a
+  side-by-side quality diff.
