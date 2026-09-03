@@ -2384,3 +2384,45 @@ either a Sent Items lookup after the send, or a switch to create-draft-then-send
 returns the id up front. **Until that exists, a follow-up cannot go in the original thread**;
 it would arrive as a separate new email, which reads worse than not following up at all.
 That is the next piece, and it belongs in the Sender, not the sequencer.
+
+### Reply detection: ran clean, and found the mailbox is wrong
+
+Owner re-approved the run. Execution 570 succeeded end to end:
+
+- `Fetch Recent Mail` returned live messages carrying every requested field — `id`,
+  `conversationId`, `from.emailAddress.address`, `body.content`, `receivedDateTime`,
+  `isDraft`. The Outlook credential reads mail without any extra consent, confirming again
+  that `Mail.Read` was never a missing prerequisite.
+- `Match Replies` returned **0 items** and the chain stopped there, writing nothing. An
+  Anthropic sign-in email and an Interactive Brokers statement were both correctly rejected:
+  neither sender is in `tblContacts`, and no outreach has been sent.
+
+So the plumbing, the field selection, the three Excel reads, the idempotency scan and the
+"ignore ordinary mail" filter all work. **The positive path is still unverified** — that
+needs a real sent email with a real reply against it.
+
+**The blocker the test exposed.** Every fetched message was addressed to:
+
+```
+toRecipients: Yash Bhutada <info@grandeuradvisory.com>
+```
+
+The credential reads **info@**. Outreach is sent **from accounting@**, so replies go to
+**accounting@** — a mailbox this workflow never looks at. As built it would poll forever and
+match nothing, and it would have looked like "no one is replying" rather than like a bug.
+That is the same failure shape as the swallowed Hunter error, found this time before it
+could mislead anyone.
+
+Three ways out, and the choice is the owner's because it is about how their mail is set up:
+
+1. **Set `Reply-To: info@` on outgoing mail.** One parameter on the sender. Replies arrive
+   where this workflow already looks. Costs nothing, but the prospect sees a different
+   address in their reply than the one that mailed them.
+2. **Point reply detection at accounting@.** Correct if `accounting@` is a shared mailbox
+   the credential can open. n8n's Outlook node only exposes an explicit `mailbox` parameter
+   under service-principal auth, so this may need a different credential type.
+3. **Send from info@ instead.** Simplest of all, if the owner is willing to give up the
+   `accounting@` sender identity.
+
+Recommendation: **1**, unless `accounting@` is genuinely a shared mailbox, in which case 2 is
+cleaner because the whole conversation stays in one place.
