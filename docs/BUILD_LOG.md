@@ -2426,3 +2426,59 @@ Three ways out, and the choice is the owner's because it is about how their mail
 
 Recommendation: **1**, unless `accounting@` is genuinely a shared mailbox, in which case 2 is
 cleaner because the whole conversation stays in one place.
+
+## 2026-09-03 - Sending moves to info@, and reply detection goes live
+
+Owner picked the third option: send from `info@grandeuradvisory.com`.
+
+That is the cleanest of the three, and for a reason worth recording. The Outlook credential
+**authenticates as info@** - execution 570 proved it by reading info@'s inbox. Sending from
+`accounting@` therefore relied on Send-As permission; sending from info@ is the account
+sending as itself. So this change does not just fix reply routing, it removes a permission
+dependency that nobody had verified.
+
+### Changed in the Sender (`sEaRV2WFAshZ9uFu`, published `70f686a5`)
+
+```
+Send Outreach Email   additionalFields.from
+                      accounting@grandeuradvisory.com  ->  info@grandeuradvisory.com
+
+Build Send Queue      CONTACT_EMAIL in the signature block
+                      accounting@grandeuradvisory.com  ->  info@grandeuradvisory.com
+```
+
+**The signature had to move with it.** This reverses the owner's 2026-08-29 instruction
+("where it is written info@grandeuradvisory.com change it to accounting@"), so it was put to
+them rather than assumed. The reason it matters: a prospect has two ways to answer. Hitting
+Reply goes to the From address; clicking the address in the signature goes to whatever that
+address says. Leaving them different would have split replies in two, and the half that went
+to accounting@ would be invisible to **both** the Responses sheet and the follow-up
+suppression - meaning the system would keep chasing someone who had already answered. One
+address, one path, nothing unseen. The address is now a single `CONTACT_EMAIL` constant so
+the two can never drift apart again.
+
+### Reply detection is ACTIVE (`lAufPqbyL5XBBbEv`, published `38d7e1dc`)
+
+Polling every 30 minutes. Safe to activate now that it is watching the right mailbox: it
+writes nothing when nothing matches, which execution 570 demonstrated against real inbox
+traffic. Until the first outreach is actually sent it has nothing to match, so it will idle.
+
+**The positive path is still unverified** and cannot be verified without a real send and a
+real reply. The first approved email is also the first live test of reply detection.
+
+### Where the follow-up chain stands
+
+```
+done   Responses sheet + 3 Outreach columns
+done   Cadence locked - Mon->Thu, Wed->Mon, 17:00 IST
+done   Reply detection built, mechanics verified, ACTIVE
+open   Sender records Sent Message ID / Conversation ID
+open   Follow-up sequencer
+```
+
+The remaining blocker is threading. Graph `sendMail` returns 202 with no body, so the message
+id is not handed back and `Sent Message ID` / `Conversation ID` stay empty. Reply detection
+does not need them - it matches on sender address - but a follow-up does, or it arrives as a
+new email rather than in the original thread. Two ways: look up Sent Items after the send, or
+switch to create-draft-then-send, which returns the id up front. The second is cleaner and is
+what the sequencer work should start with.
