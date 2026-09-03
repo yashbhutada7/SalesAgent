@@ -85,3 +85,70 @@ Recommendation: **B now + A layered in; C when volume justifies.**
 - [ ] Extend Append to write outreach columns (Main)
 - [ ] Build `Outreach Sender` workflow (Schedule → read Approved → Outlook → mark Sent)
 - [ ] Owner: Outlook credential + 8 columns + recipient-email choice
+
+---
+
+# Follow-up cadence — LOCKED 2026-09-02
+
+Owner replaced the original 7-calendar-day gap:
+
+> "instead of making 7 days after last email, make it 2 working days after last email. So if
+> first email is sent on Monday then next email should be sent on Thursday. if anything sent
+> on Wednesday then next email will go on monday"
+
+**"2 working days" here means two CLEAR working days in between**, so the follow-up lands on
+the **third working day** after the send. Both worked examples confirm it, and they are the
+spec — Mon→Thu needs Tue and Wed skipped; Wed→Mon needs Thu and Fri skipped:
+
+| Last email | Next email |
+|---|---|
+| Monday    | Thursday  |
+| Tuesday   | Friday    |
+| Wednesday | Monday    |
+| Thursday  | Tuesday   |
+| Friday    | Wednesday |
+
+Saturday and Sunday are never counted and never receive. This is worth stating carefully
+because "2 working days later" read naively gives Monday→Wednesday, which contradicts the
+owner's own example. The examples win.
+
+```js
+// Two clear working days between emails, so the follow-up is due on the third
+// working day. Owner's rule, 2026-09-02: Mon->Thu, Tue->Fri, Wed->Mon,
+// Thu->Tue, Fri->Wed.
+const WORKING_DAYS_AFTER_SEND = 3;
+
+// UTC accessors throughout: Send Date is a date-only value, and using local
+// getters would let a timezone offset shift it a day either way.
+const addWorkingDays = (from, n) => {
+  const d = new Date(from.getTime());
+  let added = 0;
+  while (added < n) {
+    d.setUTCDate(d.getUTCDate() + 1);
+    const wd = d.getUTCDay();               // 0 Sun .. 6 Sat
+    if (wd !== 0 && wd !== 6) added += 1;
+  }
+  return d;
+};
+```
+
+Unchanged by this: **maximum 3 follow-ups**, stop immediately on any reply, always in the
+same thread, and the existing send window (15:00–02:00 IST, Mon–Fri, one per 10 minutes).
+The due date only makes a follow-up *eligible*; the sender still decides when in the window
+it actually goes.
+
+## Two edges the owner should rule on
+
+1. **After-midnight sends.** The window runs to 02:00 IST, and `Send Date` stamps the real
+   IST date, so an email sent 00:30 Tuesday is stamped **Tuesday** even though it belongs to
+   Monday evening's session. Under this rule it follows up Friday, not Thursday. Using the
+   stamped date is the simplest and defensible reading — it genuinely was sent on Tuesday —
+   and that is what will be built unless the owner says otherwise.
+2. **Public holidays.** Working days means Mon–Fri only. There is no holiday calendar, so a
+   follow-up can land on Christmas Day. Adding one is easy but needs the owner to say which
+   country's holidays apply — Grandeur's, or the prospect's.
+
+**Status: specified, NOT built.** The sequencer is still blocked on the owner adding
+`Sequence Step`, `Sent Message ID` and `Conversation ID` to Outreach (Table6), and on reply
+detection, which must exist first — a follow-up sent to someone who already replied is worse
+than no follow-up at all.
