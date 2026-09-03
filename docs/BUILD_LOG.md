@@ -2482,3 +2482,85 @@ does not need them - it matches on sender address - but a follow-up does, or it 
 new email rather than in the original thread. Two ways: look up Sent Items after the send, or
 switch to create-draft-then-send, which returns the id up front. The second is cleaner and is
 what the sequencer work should start with.
+
+## 2026-09-03 (later) - Threaded sends and the follow-up sequencer
+
+Owner: "Go ahead with create-draft-then-send and build the sequencer."
+
+### Sender now captures the message id (`sEaRV2WFAshZ9uFu`, published `3e066600`)
+
+`message/send` returns 202 with no body, so the first email left nothing to thread a
+follow-up onto. The send step is now two Outlook calls:
+
+```
+Build Send Queue -> Create Draft -> Send Draft -> Record Send -> Mark Outreach Sent
+                                                              \-> Stamp Opportunity Last Outreach
+   Create Draft (error) -> Mark Send Failed
+   Send Draft   (error) -> Mark Send Failed
+```
+
+`draft/create` returns `id` and `conversationId`; Graph keeps both when the draft is sent, so
+the draft id IS the sent message's id. `Record Send` merges the queue row with those ids and
+`Mark Outreach Sent` now writes `Sequence Step = 0`, `Sent Message ID`, `Conversation ID`.
+Everything uses `.first()` not `.item`, safe because exactly one email goes per run.
+
+Residual: if Create Draft succeeds and Send Draft then fails persistently, an unsent draft is
+orphaned in the Drafts folder and the row retries next tick. Rare (same endpoint, seconds
+apart) and self-healing; noted, not guarded.
+
+### Follow-Up Sequencer (`ie6wPd70DBL6IPD8`, published `8af8ff2a`, Asia/Kolkata)
+
+```
+Follow-Up Tick (*/10 17-21 * * 1-5, IST)
+  -> Read Outreach / Contacts / Responses
+  -> Pick Follow-Up            one company, most overdue first
+  -> Send Follow-Up Reply      message/reply, threaded, from info@
+  -> Build Follow-Up Row -> Append Follow-Up Row (new Table6 row, Seq+1)
+                         \-> Stamp Opportunity Last Outreach
+```
+
+Rules, all the owner's: **max 3** follow-ups, due on the **third working day** after the last
+email, **17:00 IST start** (owner fixed the send hour, which also killed the midnight-date
+ambiguity), one per 10-min tick so they never burst, weekdays only, and **stop the moment the
+company replies**. Stop is enforced two ways at once - any outreach row marked Replied, or any
+Responses row for the company - to cover the up-to-30-min gap before reply detection marks it.
+
+**Threading uses message/reply, reply-all, from info@.** Replying to our own sent message and
+overriding `toRecipients` to the prospect sends the follow-up to them, in the same Outlook
+conversation, with the original quoted beneath. Each follow-up threads off the LATEST sent
+message for that company (highest Sequence Step), and its own reply id is stored so the next
+one threads off it.
+
+**Bodies are three fixed escalating nudges**, not AI-generated: follow-ups are auto-sent
+without per-email approval (owner's earlier choice), and a nudge needs no fresh research. The
+wording is a constant at the top of Pick Follow-Up, easy to edit.
+
+Each follow-up APPENDS a new Outreach row (Approval Status "Auto Follow-Up", Outreach Status
+"Follow-Up Sent", Sequence Step N) rather than overwriting the original, so the sheet keeps a
+per-email history and the sender never re-picks it (it only sends "approved").
+
+### Verified, and the gap it exposed
+
+Smoke test (execution 612) ran the whole read+pick path against live data. Pick Follow-Up
+returned **zero** and the reply node never fired - correct. But the reads showed something
+the owner should know:
+
+**AssetWatch and Deepgram have already been sent** (Outreach 1 and 2, Sent Date 46266 =
+2026-09-02/03, Outreach Status Sent) - the pipeline's first real automated cold emails. They
+were sent by the OLD sender, so their `Sent Message ID` and `Sequence Step` are blank.
+
+Consequence: **the sequencer cannot auto-follow-up those two** - it has no message id to
+thread onto, so it skips them by design. Every FUTURE send (via the new sender) will carry
+the id and be followed up normally. Reply DETECTION still covers these two, via its
+sender-address fallback, so a reply from Bill Ruff or Jason Rubinstein is still caught.
+
+To close the gap on those two specifically, their `Sent Message ID` / `Conversation ID` could
+be backfilled by looking the messages up in Sent Items. Offered to the owner rather than done
+unprompted - it writes to live rows and needs careful matching of the right sent message.
+
+### Positive path still unverified
+
+No follow-up has actually been sent, because none is due yet and the two sent rows are
+un-threadable. The first real follow-up fires three working days after the next send through
+the new sender, and that is also the first live test of message/reply recipient handling -
+the one behaviour I could not verify without a real threaded message to reply to.
