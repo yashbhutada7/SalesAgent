@@ -2628,3 +2628,56 @@ written. Left as-is.
   contact, which the sequencer already honours.
 - Lever 2: move Company Research and Contact Research off the flagship model, verified with a
   side-by-side quality diff.
+
+## 2026-09-03 (later) - Suppression kill-switch, and Lever 2 tested then abandoned
+
+### Follow-up sequencer now honours Suppression (`5a36b235`)
+
+Answering the owner's question "how do I stop follow-ups to someone who complained/spammed."
+The sequencer stopped on a reply or a contact's Do Not Contact flag, but did NOT read the
+Suppression sheet, so suppressing a company blocked new first-sends yet not an in-flight
+follow-up chain. Added a Read Suppression node; Pick Follow-Up now folds suppressed Company
+IDs and Contact IDs into the stop set. Adding someone to Suppression is now a true kill
+switch for follow-ups too. Verified: Read Suppression returns the (empty) table, chain intact.
+
+The immediate manual lever, unchanged and still the fastest: set Do Not Contact = Yes on the
+contact in the Contacts tab - the sequencer already honours it every tick.
+
+### Lever 2 (cheaper research models): tested, does not pay off, abandoned
+
+Ran a real A/B on Afresh, flagship vs two minis, comparing grounding, field completeness,
+citations, tokens and the finance-hiring signal (the field that actually makes a company a
+prospect):
+
+```
+Company Research   chat-latest   21,410 in / 1,408 out   19s   full, primary sources, finds finance hiring
+                   gpt-5-mini    63,222 in / 6,054 out   90s   grounded, but 3x tokens = NO saving
+                   gpt-4.1-mini   8,174 in /   525 out    7s   cheap, but MISSED finance hiring, blank legal name, data-broker source
+
+Contact Research   chat-latest   ~32,000 in              finds contacts (though see wrong-company note)
+                   gpt-5-mini      9,719 in              found ZERO contacts
+```
+
+Conclusion: neither mini is a good swap. gpt-5-mini is a reasoning model that over-searches,
+so it inflates tokens instead of saving them, and it failed contact-finding outright.
+gpt-4.1-mini is genuinely cheap but drops the finance-hiring signal, blanks the legal name,
+and prefers a data-broker aggregator over the company's own announcements - it degrades lead
+QUALITY. For a BD tool one good lead is worth far more than the ~$0.02/call saved, so trading
+quality for that is a bad deal. Both nodes reverted to chat-latest, published `c02570b6`.
+
+The disciplined takeaway: the intuition "mini is cheaper for extraction" was wrong here on
+both counts - reasoning minis don't save tokens, and cheap minis miss the signal that
+matters. The A/B is exactly why this was tested before shipping, not swapped blind.
+
+**The cost win this session is the Hunter fix, not model tiering.** With the gate now working,
+companies with no findable email defer before the three web-search AI calls - a real per-run
+saving that scales with how many domains lack emails, and one that costs nothing in quality.
+
+### Noted, not fixed: Contact Research wrong-company bug resurfaced
+
+The Afresh A/B run returned contacts from CapNexus / Capstone (Mary Hale, Marty Hendrickson)
+- a different company - because Contact Research matched on a "Financial Controller reports to
+CEO" posting rather than anchoring on Afresh. Same class as the earlier Permutive-under-Leyden
+-Labs bug, and model-independent (flagship did it). Low blast radius today: those contacts
+carried no email and the eligibility gate needs one. It needs a prompt change that anchors
+hard on the company identity, with its own verification pass. Flagged for a future turn.
