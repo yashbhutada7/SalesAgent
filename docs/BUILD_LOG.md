@@ -2681,3 +2681,61 @@ CEO" posting rather than anchoring on Afresh. Same class as the earlier Permutiv
 -Labs bug, and model-independent (flagship did it). Low blast radius today: those contacts
 carried no email and the eligibility gate needs one. It needs a prompt change that anchors
 hard on the company identity, with its own verification pass. Flagged for a future turn.
+
+## 2026-09-04 - Contact Research wrong-company bug: the anchor was empty all along
+
+Owner approved fixing the wrong-company drift (CapNexus contacts returned for Afresh).
+
+### Real root cause
+
+The prompt already said "the SAME company" and "do not return a similarly named different
+company." It still drifted. The reason was not the wording - it was the DATA. Contact
+Research runs off the opportunity item (from Assign Opportunity ID), and that item carries
+`Company ID`, `Opportunity Type`, `Primary Signal` and the evidence prose, but NOT
+`Company Name` or `Website`. So the prompt's anchor lines - `{{ $json['Company Name'] }}`
+and `{{ $json['Website'] }}` - resolved to EMPTY. With no company name and no domain, the
+model had nothing to anchor on and inferred the company from the only company-shaped text
+present: the Primary Signal. When the signal quoted a "Financial Controller reports to CEO"
+posting, the model followed it to whatever company owned that posting - CapNexus/Capstone
+for Afresh, Permutive for Leyden Labs.
+
+This was invisible for two reasons: the eligibility gate needs a finance contact WITH an
+email, and these wrong-company contacts had none, so they never became outreach - the drift
+only showed up when someone read the Contacts tab.
+
+### The fix, in two parts
+
+1. **Give the node a real anchor.** The company identity fields now read from
+   `$('Assign Company ID').first().json` - the company record, which holds the authoritative
+   Company Name, Website, Country and Industry - while Opportunity Type and Primary Signal
+   stay from the opportunity item as context.
+2. **Rewrite the prompt around the domain.** The website domain is named the single source
+   of truth for identity; Primary Signal / Opportunity Type are explicitly reframed as
+   context that is NOT a search target ("never follow a matching signal or job posting to
+   another company"); each person must be tied to this company by name AND domain with a
+   named source; a final self-check drops anyone who cannot be.
+
+The prompt rewrite alone was not enough and briefly over-corrected: with the anchor still
+empty (before part 1), the stricter prompt just returned an empty array on Afresh - it had
+no company to search for. Adding a "HOW TO FIND THEM - do this actively" section (start at
+the company's own About/Leadership page, then LinkedIn for current-employer matches) plus
+the real anchor is what produced the correct result.
+
+### Verified
+
+Three runs on Afresh:
+
+```
+707  empty-item anchor + strict prompt      -> {"contacts":[]}          (no company to search)
+708  empty-item anchor + rebalanced prompt   -> {"contacts":[]}          (still no anchor)
+713  Assign Company ID anchor + prompt        -> Erica Hanson, SVP Finance @ Afresh
+```
+
+Run 713 returned the correct person, tied in the notes to "Afresh's official About page at
+afresh.com" and Equilar listing her employer as Afresh Technologies at domain afresh.com -
+exactly the domain-anchored verification the prompt now demands. 34,781 input tokens, so it
+did the real searching rather than bailing. Published `15047e12`.
+
+Lesson worth keeping: when a model "ignores" an instruction about a specific value, check
+that the value is actually reaching the prompt before rewriting the instruction. The anchor
+had been blank the whole time.
