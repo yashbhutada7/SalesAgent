@@ -2866,3 +2866,12 @@ first run after the OpenAI top-up should be watched to confirm the finance conta
 Findymail-verified email.
 
 The Hunter credential is now unused by any node - the Hunter subscription can be cancelled.
+
+### Verified after OpenAI top-up (2026-09-08)
+
+Once credits were added, the manual Afresh run (execution 1219) went green end to end.
+Contact Research identified Erica Eaton Hanson (VP, Strategy & Finance at Afresh) as primary
+decision-maker with her LinkedIn URL; `Findymail Enrich` resolved `erica@afresh.com` as
+Verified via the LinkedIn-URL path (not the name+domain fallback); the row merged and upserted
+and flowed through to an outreach draft awaiting approval. Hunter is fully out of the loop and
+the AI -> Findymail (LinkedIn-first) path is confirmed on live data.
