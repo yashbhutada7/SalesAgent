@@ -2817,3 +2817,52 @@ still originate from Hunter, not Findymail. Fully removing Hunter means deciding
 to the gate and the bulk source (drop it and rely on AI-identified contacts + Findymail, or
 keep Hunter only as the near-free gate). Left for the user to decide; this entry covers the
 enrichment swap only.
+
+## 2026-09-08 (later) - Hunter removed entirely, and OpenAI is out of credits
+
+Follow-up to the enrichment swap: the decision was to remove Hunter completely, not keep it
+as a gate. Hunter Domain Search did two jobs - it fed the pre-research gate, and its results
+were merged into `Assign Contact IDs` as a bulk contact source - so both had to go.
+
+### What changed
+
+Removed five nodes: `Hunter Domain Search`, `Contact Gate`, `Proceed With Research?`,
+`Build Defer Row`, `Defer Company`. `Normalize Domain` now feeds `Company Research AI`
+directly. `Assign Contact IDs` was rewritten to drop the Hunter block - contacts come only
+from `Contact Research AI` (which targets finance decision-makers by name and LinkedIn URL),
+and Findymail Enrich resolves their verified emails downstream. Every other line of
+Assign Contact IDs - the four-key dedup, the finance ranking, primary/backup designation,
+existing-row matching - is unchanged.
+
+### Why dropping the gate does not stall the queue
+
+The gate's defer branch used to set a `Next Research Date` to push a company out 30 days.
+The worry with removing it: does a company with no findable email now get re-picked every
+tick forever? No - and `Pick Next Company`'s own comment explains why. The gate deferred
+companies precisely because it BLOCKED research, leaving `Last Researched` blank, and a blank
+`Last Researched` is the never-researched fast path that re-picks every tick. With the gate
+gone, research always runs, so `Last Researched` is always stamped, and the 14-day
+re-research floor (`MIN_DAYS_BETWEEN_RESEARCH`) governs everything. No defer needed. The only
+cost is that a company with no findable email gets AI-researched again every 14 days instead
+of every 30 - accepted.
+
+### Could not run end-to-end: OpenAI account is out of credits
+
+The manual verification run (execution 1179, on Afresh) died in three seconds at the very
+first AI node, `Company Research AI`:
+
+```
+NodeApiError: You have no credits remaining. Add credits to continue using the API
+```
+
+The scheduled trigger runs at 11:00 and 12:00 failed for the same reason. This is a billing
+state on the user's OpenAI account, not a workflow bug - but it means the entire agent has
+been failing at the research step since the balance hit zero, and the new contact ->
+Findymail path cannot be exercised until credits are topped up. The change was verified as
+far as possible without OpenAI: node graph correct (35 nodes, zero Hunter nodes, Normalize
+Domain -> Company Research AI the only path in), Assign Contact IDs carries no Hunter
+reference, and Findymail Enrich was already proven in isolation. Published `1ae71523`;
+first run after the OpenAI top-up should be watched to confirm the finance contact gets a
+Findymail-verified email.
+
+The Hunter credential is now unused by any node - the Hunter subscription can be cancelled.
