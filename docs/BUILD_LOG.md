@@ -2739,3 +2739,81 @@ did the real searching rather than bailing. Published `15047e12`.
 Lesson worth keeping: when a model "ignores" an instruction about a specific value, check
 that the value is actually reaching the prompt before rewriting the instruction. The anchor
 had been blank the whole time.
+
+## 2026-09-08 - Email finding moves from Hunter to Findymail, LinkedIn-first
+
+The ask: stop finding contact emails with Hunter and use Findymail instead, checking a
+person's LinkedIn first and only falling back to a name+domain guess if that misses. The
+premise needed one correction up front - LinkedIn does not publish emails on profiles, so
+"check LinkedIn first" really means "resolve the person's LinkedIn URL to an email through
+a finder that does that lookup." Findymail does exactly that, and its LinkedIn endpoint is
+both more accurate and returns richer data (company, title, location) than a name+domain
+guess.
+
+### What actually changed
+
+Only the per-contact enrichment was replaced. The old path was three nodes:
+`Prepare Email Lookup -> Hunter Find Email -> Apply Found Email`, hanging off the
+`Has Email?` false branch (contacts the research stage found but with no email yet). Those
+three are gone, replaced by a single Code node **Findymail Enrich** that owns the whole
+waterfall in one place:
+
+1. If the contact has a `linkedin.com/in/` URL, call `POST /api/search/linkedin`.
+2. If that misses (or there was no URL), fall back to `POST /api/search/name` with the
+   contact name and the company domain (domain read from `$('Assign Company ID').first()`,
+   same anchor the old Prepare Email Lookup used).
+3. On a hit, stamp `Email`, set `Email Verification Status = Verified` (Findymail only ever
+   returns already-verified emails - there is no confidence score to threshold like Hunter),
+   fill a blank Job Title / LinkedIn URL from Findymail's richer record, and append a note
+   saying which method found it. On a miss, the contact passes through untouched with no
+   email, exactly as before.
+
+Wiring: `Has Email?` [false] -> `Findymail Enrich` -> `Merge Contacts` (input 1) ->
+`Upsert Contact`. The has-email branch (input 0) and the Merge/Upsert nodes are unchanged;
+Findymail Enrich emits the same contact-object shape the removed Apply Found Email did.
+
+The Code node makes its HTTP calls with `this.helpers.httpRequest`, which the instance
+supports. There is no native Findymail n8n node and the MCP cannot create credentials, so
+the API key rides as a Bearer header inside the node rather than a stored credential - fine
+for a private instance, and a candidate to move into a Header Auth credential later.
+
+### Why a single Code node instead of nodes + IF branches
+
+The obvious build - an IF for "has LinkedIn?", two HTTP Request nodes, and a code node to
+apply the result - relies on n8n's pairedItem tracing surviving IF -> HTTP -> IF -> HTTP to
+map each response back to its original contact. That is the fragile part. Doing the whole
+waterfall in one Code node that owns the item start to finish removes the fragility and
+reads top-to-bottom.
+
+### How it was proven before going live
+
+Findymail's docs host is blocked from the build environment, so the API contract was locked
+against the live API instead, via a throwaway probe workflow (now archived). Findings:
+
+- `POST /api/search/name` {name, domain} and `POST /api/search/linkedin` {linkedin_url} both
+  return `{ "contact": { email, name, domain, company, linkedin_url, job_title, ... } }`.
+  The LinkedIn call returned the fuller record (company "Stripe", job_title "CEO", location);
+  the name call returned only email+name+domain.
+- No verification/score field - a returned email is the verified answer, a miss returns no
+  contact. Pay-per-hit, so misses cost nothing.
+- `this.helpers.httpRequest` works from inside a Code node here.
+
+Then the exact enrich logic was run in isolation over three synthetic contacts:
+
+```
+Patrick Collison + LinkedIn URL     -> patrick@stri.pe  Verified  via LinkedIn URL  (title enriched to CEO)
+Patrick Collison, no URL, +domain   -> patrick@stri.pe  Verified  via name + domain (existing note preserved)
+Zzqwer Nonexistentperson            -> (blank)                    via none          (clean miss, no crash)
+```
+
+All three correct. Published `b1ff3b5e`.
+
+### Still open: Hunter Domain Search
+
+`Hunter Find Email` is gone, but `Hunter Domain Search` still runs. It does two jobs: it
+feeds the pre-research **gate** (Contact Gate decides proceed/defer), and its returned emails
+are merged into `Assign Contact IDs` as a bulk contact source - meaning some outreach emails
+still originate from Hunter, not Findymail. Fully removing Hunter means deciding what happens
+to the gate and the bulk source (drop it and rely on AI-identified contacts + Findymail, or
+keep Hunter only as the near-free gate). Left for the user to decide; this entry covers the
+enrichment swap only.
