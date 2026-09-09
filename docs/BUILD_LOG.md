@@ -2875,3 +2875,56 @@ decision-maker with her LinkedIn URL; `Findymail Enrich` resolved `erica@afresh.
 Verified via the LinkedIn-URL path (not the name+domain fallback); the row merged and upserted
 and flowed through to an outreach draft awaiting approval. Hunter is fully out of the loop and
 the AI -> Findymail (LinkedIn-first) path is confirmed on live data.
+
+## 2026-09-09 - Unverified-email backfill, field/column trim, throughput answer, DMARC check
+
+Three requests plus a deliverability file.
+
+### Findymail backfill of unverified contacts
+
+A one-off workflow (`Findymail Backfill (name+domain)`, ofPqdJXsnhWxU6RB, kept for reuse) reads
+every Contacts row whose Email Verification Status is not "Verified", and for those with a name
+AND a company domain, resolves the email through Findymail's name+domain endpoint (chunked
+concurrency of 3 to stay under the 300/min cap), upserting only the hits as full rows.
+
+Two dead ends first, both instance limits, not logic: the Code node aborts any single task at
+**60 seconds**, and the whole workflow at **300 seconds**; and Findymail's **LinkedIn endpoint is
+capped at 50/min**, so a LinkedIn-first pass over 159 contacts cannot finish in one run without
+429s. name+domain (300/min) fits. A Microsoft Graph **504** on the Contacts read killed one run
+until retries (4x, 3s) were added to the Excel nodes - the same flakiness the main workflow already
+guards against. Result: **15 of 159 contacts newly verified**, including several that had no email
+at all (e.g. charity: water CFO, STABL CFO, Blue Moon CFO) and several low-confidence Hunter
+guesses upgraded to Findymail-verified (Paul Micheli was Hunter confidence 26, Nellie Vail 29).
+DNC contacts (Seven Tides) were filled but stay protected. A LinkedIn second-pass over the
+still-unverified remainder is possible later if wanted.
+
+### Column / field trim (cost)
+
+The user listed 15 Company fields and 5 Opportunity fields to drop. Removed them from the two Set
+mappers - `Normalize Research Output` (39 to 24 fields) and `Map Opportunity Output` (22 to 17) -
+so the worksheet auto-map upsert stops writing (and can't re-create) those columns. Rewrote the
+`Company Research AI` prompt to drop the 15 fields from the research objective, JSON schema and
+field rules, and added a hard directive to spend ZERO web searches on them, including when judging
+ICP Fit / Priority (now judged only from finance hiring, company status, recent signals and
+discovery notes). This is the real cost lever - web searches dominate the per-company OpenAI cost.
+`Primary Contact ID` was safe to drop (outreach picks the recipient from the Contacts
+Primary-Decision-Maker flag, not from the opportunity). Verified on Afresh (exec 1254): 24-field
+JSON parses, ICP Fit=High from the finance-hiring signal, pipeline green through eligibility.
+Published 65f7ab0d. The physical sheet columns keep their old values until the user deletes them by
+hand (auto-map neither blanks nor re-creates them).
+
+### Throughput ("50-100 leads/day")
+
+Root cause of "2-3 leads": research runs hourly, one company per run (~13/day), and Discovery
+(iEZAsjljfX0jXF83) runs 3x/day x max_results 5 (~15 new companies/day). Both are the throttle, not
+Findymail. Reaching 50-100/day means cranking the research cron (every ~10-15 min) AND discovery
+volume, at 4-7x the OpenAI cost - and the true ceiling is how many real ICP companies with a fresh
+finance signal exist, so expect a burst then a taper. User chose to **hold at ~13/day for now** and
+scale later; the field trim lowers the per-company cost in the meantime.
+
+### DMARC report (google.com!grandeuradvisory.com Sept 8-9)
+
+The uploaded zip was a DMARC aggregate report. Conclusion: authentication is healthy. All 5 logged
+messages sent as @grandeuradvisory.com came from Microsoft 365 (Outlook) IPs and passed BOTH SPF
+and DKIM, aligned to the domain; DMARC disposition none. Published policy is p=none (monitor).
+Optional hardening: move to p=quarantine then p=reject once all legit senders are confirmed passing.
