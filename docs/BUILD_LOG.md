@@ -2928,3 +2928,35 @@ The uploaded zip was a DMARC aggregate report. Conclusion: authentication is hea
 messages sent as @grandeuradvisory.com came from Microsoft 365 (Outlook) IPs and passed BOTH SPF
 and DKIM, aligned to the domain; DMARC disposition none. Published policy is p=none (monitor).
 Optional hardening: move to p=quarantine then p=reject once all legit senders are confirmed passing.
+
+## 2026-09-15 - Follow-ups were silently failing on every tick: the message id was dead
+
+The Follow-Up Sequencer ran green every 10 minutes but sent nothing. Root cause: it sent a
+THREADED reply (Outlook message/reply) to the original email's stored "Sent Message ID", and
+that id was a **draft id**. The Sender creates a draft, sends it, and stores the draft-create id
+with a comment betting the id survives the send - it does not. Once Outlook sends a draft it
+moves to Sent Items under a NEW id and the draft id 404s. So every follow-up reply failed with
+Graph "The resource you are requesting could not be found", was caught by the node's error
+output (so the run still reported success), and - because the send failed - the recording chain
+never ran, so the SAME company was re-picked and re-failed on the next tick, blocking every other
+due follow-up behind it. The design was doubly broken: message/reply also returns 202 no body, so
+even a successful reply would have stored an empty id and broken follow-ups #2 and #3.
+
+### Fix: drop threading, send each follow-up as its own email
+
+Replaced the message/reply node with the same create-draft-then-send mechanism the original sends
+already use (Create FU Draft -> Send FU Draft), from info@. No message-id dependency anywhere, so
+nothing can go stale. Subject is prefixed "Re:" and the body opens "following up on my earlier
+note" instead of "my note below". Removed the Sent Message ID gate in Pick Follow-Up (it existed
+only for threading), so every sent row qualifies. Cadence changed from 3 to **2 working days**
+after the last email (owner request); MAX_FOLLOWUPS stays 3; stop-on-reply/suppression/DNC
+unchanged.
+
+Trade-off recorded: follow-ups are no longer in the same email thread. Reply detection still
+catches replies by sender->contact match, so stop-on-reply is unaffected. Threading can be
+restored later by resolving the live Sent-Items message from the (valid) Conversation ID before
+replying - deferred as unnecessary complexity for now.
+
+Verified on the draft (exec 2190): picked Bill Ruff (AssetWatch), created the draft from info@ to
+wruff@assetwatch.com, Send FU Draft returned success, and Outreach row 27 was appended at Sequence
+Step 1 - a real follow-up went out with no 404. Published ab346932.
