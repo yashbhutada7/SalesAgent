@@ -2960,3 +2960,31 @@ replying - deferred as unnecessary complexity for now.
 Verified on the draft (exec 2190): picked Bill Ruff (AssetWatch), created the draft from info@ to
 wruff@assetwatch.com, Send FU Draft returned success, and Outreach row 27 was appended at Sequence
 Step 1 - a real follow-up went out with no 404. Published ab346932.
+
+### Follow-up: restore same-thread replies (owner: "I would like to see in the same thread email")
+
+Reintroduced threading the safe way, without reviving the dead-draft-id bug. The original stored
+"Sent Message ID" is still a draft id and still 404s, so we never reply to it. Instead each tick
+now looks the thread up live: Pick Follow-Up carries the **Conversation ID** (which is stable and
+valid, unlike the draft id), a new **Find Thread Msg** HTTP node does
+`GET /me/messages?$filter=conversationId eq '<id>'&$select=id,conversationId&$top=1` on the Graph
+(Outlook OAuth2 predefined credential), **Resolve Reply Target** pulls that live message id (and
+skips the tick if no live message is found), and **Send Reply** does an Outlook message/reply on
+it with `saveAsDraft:false`, `replyToSenderOnly:true`, `from: info@`, and a `toRecipients`
+override forcing the prospect. Build Follow-Up Row now records the original Conversation ID and
+leaves Sent Message ID empty (message/reply returns 202 no body, so there is no id to store - and
+we no longer need one).
+
+New gate: Pick Follow-Up only picks companies that have a Conversation ID on record, threading into
+the EARLIEST conversation on file for that company (lowest Sequence Step) so #1/#2/#3 all stay in
+the one original thread. Trade-off: any legacy row with no Conversation ID (e.g. very old sends)
+will not get a threaded follow-up - acceptable, since all current outreach records the conversation.
+
+Verified end-to-end on the draft (exec 2198, status success, all 12 nodes ran through Stamp
+Opportunity): picked Grand 043 / Haroon Khan / haroon@syarah.com, Find Thread Msg returned the one
+live thread message, Send Reply sent a threaded reply, and Outreach row 28 was appended at Sequence
+Step 1. Confirmed authoritatively in the mailbox: "RE: P2P, O2C and close support" now sits in
+**Sent Items** (sentDateTime 2026-09-15T18:27:38Z, to haroon@syarah.com) sharing the SAME
+conversationId as the original 2026-09-03 "P2P, O2C and close support" - i.e. the follow-up lands
+in the original thread, sent to the prospect, no 404, no error branch. Published 26c2863a.
+Throwaway "Threading Probe" workflow archived.
