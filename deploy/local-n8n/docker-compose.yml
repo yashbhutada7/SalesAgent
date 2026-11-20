@@ -1,0 +1,33 @@
+# Self-hosted n8n for the Grandeur BD Agent.
+# Start:  docker compose up -d      Editor: http://localhost:5678
+services:
+  n8n:
+    image: n8nio/n8n:${N8N_VERSION:-latest}
+    container_name: grandeur-n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    env_file: .env
+    environment:
+      # The send window (15:00-02:00 IST) and every schedule depend on this.
+      - GENERIC_TIMEZONE=Asia/Kolkata
+      - TZ=Asia/Kolkata
+      - N8N_HOST=${N8N_HOST:-localhost}
+      - N8N_PORT=5678
+      - N8N_LISTEN_ADDRESS=0.0.0.0
+      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
+      - WEBHOOK_URL=${N8N_PROTOCOL:-http}://${N8N_HOST:-localhost}:5678/
+      - N8N_SECURE_COOKIE=${N8N_SECURE_COOKIE:-false}
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
+      # Cloud capped runs at 300s; the Findymail backfill hit that. Raise it here.
+      - EXECUTIONS_TIMEOUT=1800
+      - EXECUTIONS_TIMEOUT_MAX=3600
+      # Keep 14 days of run history so the disk doesn't fill.
+      - EXECUTIONS_DATA_PRUNE=true
+      - EXECUTIONS_DATA_MAX_AGE=336
+      - N8N_DIAGNOSTICS_ENABLED=false
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./backup:/backup
+volumes:
+  n8n_data:
