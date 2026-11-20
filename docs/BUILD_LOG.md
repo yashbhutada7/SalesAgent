@@ -2988,3 +2988,19 @@ Step 1. Confirmed authoritatively in the mailbox: "RE: P2P, O2C and close suppor
 conversationId as the original 2026-09-03 "P2P, O2C and close support" - i.e. the follow-up lands
 in the original thread, sent to the prospect, no 404, no error branch. Published 26c2863a.
 Throwaway "Threading Probe" workflow archived.
+
+## 2026-11-20 - Self-hosting package built; OpenAI credits exhausted again
+
+Owner asked to move n8n off Cloud onto a local server to save cost. Built
+`deploy/local-n8n/` (Docker Compose, IST timezone, raised run timeout, 14-day
+execution pruning, install / export-from-cloud / import / backup scripts). Tested in a
+throwaway container on n8n 2.48.6: healthz ok, clock IST, import and backup work. Two
+fixes found by the test: `N8N_LISTEN_ADDRESS=0.0.0.0` (n8n crashed binding `::` where
+IPv6 is absent) and a writable `backup/` bind mount (container runs as uid 1000).
+
+Not yet installed on the owner's machine: no computer is attached to the session.
+
+Live status checked the same day: Grandeur BD Agent V1 13/13 runs failed and Prospect
+Discovery 3/3 failed, all at the first OpenAI node with `credit_balance_exhausted`.
+Reply Detection, Outreach Sender and Follow-Up Sequencer are unaffected (no OpenAI).
+Self-hosting does not change OpenAI cost; that is billed per call wherever n8n runs.
