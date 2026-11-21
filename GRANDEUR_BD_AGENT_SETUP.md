@@ -1,6 +1,6 @@
 # Grandeur BD Agent — Complete Setup & Handover File
 
-**Snapshot date:** 20 November 2026 (IST)
+**Snapshot date:** 20 November 2026 (IST), updated 21 November 2026
 **Owner:** Yash Bhutada, Grandeur Advisors LLP
 **Purpose of this file:** One self-contained file that lets any new device, new Claude session or new n8n account understand, restore and continue the Grandeur AI Business Development Agent exactly where it was left.
 
@@ -120,11 +120,11 @@ Contact ID, Company ID, Name, Job Title, Department, Seniority, Email, Email Ver
 
 Helper / diagnostic workflows (inactive, keep for reuse): `Findymail Backfill (name+domain)` `ofPqdJXsnhWxU6RB`, `Grandeur BD - Outreach Audit` `cW44D07WQvM1NMd5` (read-only), `Outreach Funnel Diagnostic` `zFXOLcSHA3Qjyfsm`.
 
-### Main pipeline: node order (35 nodes)
-`Scheduled Intake` → `Get Research Queue` (Companies) → `Pick Next Company` → `Normalize Domain` → **`Company Research AI`** (web search) → `Normalize Research Output` → `Get Existing Companies` → `Assign Company ID` → `Upsert Company` → **`Opportunity Research`** (web search) → `Map Opportunity Output` → `Get Existing Opportunities` → `Assign Opportunity ID` → `Upsert Opportunity` → **`Contact Research AI`** (web search) → `Get Existing Signals` → `Assign Signal ID` → `Upsert Signal` → `Get Existing Contacts` → `Assign Contact IDs` → `Has Email?` → (no email) **`Findymail Enrich`** → `Merge Contacts` → `Upsert Contact` → `Get Company Contacts` → `Get Outreach History` → `Get Suppression List` → `Get Clients` → `Check Outreach Eligibility` → `Eligible?` → **`Outreach Draft AI`** (no web search) → `Build Outreach Row` → `Append Outreach Draft`.
+### Main pipeline: node order (39 nodes)
+`Scheduled Intake` → `Get Research Queue` (Companies) → `Early Suppression` → `Early Clients` → `Early Competitors` → `Early Opportunity Scores` → `Pick Next Company` → `Normalize Domain` → **`Company Research AI`** (web search) → `Normalize Research Output` → `Get Existing Companies` → `Assign Company ID` → `Upsert Company` → **`Opportunity Research`** (web search) → `Map Opportunity Output` → `Get Existing Opportunities` → `Assign Opportunity ID` → `Upsert Opportunity` → **`Contact Research AI`** (web search) → `Get Existing Signals` → `Assign Signal ID` → `Upsert Signal` → `Get Existing Contacts` → `Assign Contact IDs` → `Has Email?` → (no email) **`Findymail Enrich`** → `Merge Contacts` → `Upsert Contact` → `Get Company Contacts` → `Get Outreach History` → `Get Suppression List` → `Get Clients` → `Check Outreach Eligibility` → `Eligible?` → **`Outreach Draft AI`** (no web search) → `Build Outreach Row` → `Append Outreach Draft`.
 Plus a manual trigger and the `Test Company Input` fixture (BluePeak test company) kept for testing.
 
-**AI calls per researched company:** up to 4 (Company Research, Opportunity Research, Contact Research, Outreach Draft), three of them with web search, plus Discovery 3×/day. All use model `chat-latest`; web-search context is "medium" in the main pipeline and **"high"** in Discovery.
+**AI calls per researched company:** up to 4 (Company Research, Opportunity Research, Contact Research, Outreach Draft), three of them with web search, plus Discovery 3×/day. All use model `chat-latest`; web-search context is **"medium"** everywhere (Discovery lowered from "high" on 21 Nov 2026). The email-draft step deliberately keeps the top model (owner decision: quality of prospect-facing text).
 
 ---
 
@@ -136,9 +136,10 @@ Plus a manual trigger and the `Test Company Input` fixture (BluePeak test compan
 - Opportunity ID = one per **company + opportunity type**; re-runs update rather than duplicate.
 - Discovery appends stubs with a blank Company ID; research fills them in (single-writer rule).
 
-**Research cadence**
+**Research cadence & free pre-checks** (updated 21 Nov 2026, in `Pick Next Company`)
 - One company per hourly run. New (never-researched) companies first.
-- Any company is re-researched at most every **14 days** (`MIN_DAYS_BETWEEN_RESEARCH = 14`).
+- **Before any AI call**, a company is skipped at zero cost if: its country is outside the target list; it is in **Suppression** (matched by Company ID, by company name ignoring Ltd/Inc/GmbH etc., or by a website typed into "Name/Company"); it is an active **Client** (by ID or name; Former/Inactive/Churned/Past clients are allowed); or its website or name matches a **Competitor**.
+- Re-research: **promising** companies (ICP Fit High/Medium, or any opportunity scored 50+) every **30 days**; all others get **one recheck 90 days** after first research, then never. (Was: every company every 14 days, forever.)
 - Skipped statuses: Excluded, Suppressed, Do Not Contact, Client, Closed, Disqualified.
 - Research spends **zero** searches on revenue, employees, ERP, tech stack, outsourcing, etc. (cost cut, Sept 2026).
 
@@ -192,9 +193,17 @@ Plus a manual trigger and the `Test Company Input` fixture (BluePeak test compan
 6. **Tests passed with empty tabs:** Outreach Sender, Reply Detection and Follow-Up Sequencer all ran green and sent nothing (Excel + Outlook connections confirmed working).
 7. Temporary helper workflows used for the backup/clear were archived.
 
+### 21 November 2026: cost-reduction changes (owner decisions)
+1. **Free checks first:** 4 zero-cost Excel reads (`Early Suppression`, `Early Clients`, `Early Competitors`, `Early Opportunity Scores`) added before `Pick Next Company`, which now skips out-of-market, suppressed, client and competitor companies before any AI call.
+2. **Re-research only promising companies:** 30-day refresh for promising ones; a single 90-day recheck for the rest, then never (replaces every 14 days forever).
+3. **Discovery web search high → medium.**
+4. **Email draft model unchanged** (owner kept the top model for quality).
+5. Not adopted (owner chose not to): stopping after Company Research when ICP Fit is Low; stopping after scoring when the score is under 50. These remain available as further savings.
+6. Verified: 19/19 local test cases for the new picking rules; live dry-run (exec 9619) read all four lists and stopped before any AI call with an empty queue. Nothing published; schedules still OFF.
+
 ---
 
-## 9. Current status (end of 20 Nov 2026)
+## 9. Current status (end of 20 Nov 2026; updated 21 Nov)
 
 | Item | Status |
 |---|---|
@@ -211,14 +220,12 @@ Plus a manual trigger and the `Test Company Input` fixture (BluePeak test compan
 
 ## 10. Next steps (agreed plan)
 
-**Step 1: Rules review to cut token cost** (planned for 21 Nov, before any top-up). Levers to discuss:
-- Discovery web search "high" → "medium"; fewer runs or fewer results per run.
-- Main pipeline: 13 runs/day; consider fewer hours or skipping companies that fail early checks.
-- **Stop the 14-day re-research loop** for companies already judged Low/Unknown or with no findable contact (currently every company is re-researched forever).
-- Run the cheap checks (country, suppression, client) **before** the expensive AI research; today most of them run only at the end, after all AI calls are spent.
+**Step 1: Rules review to cut token cost.** ✅ First round done 21 Nov (see Section 8). Remaining levers, not yet adopted:
+- Stop after Company Research when ICP Fit is Low (saves 3 AI calls per weak company).
+- Stop after Opportunity Research when the score is under 50, i.e. only run Contact Research / Findymail / draft for 50+.
+- Fewer Discovery runs or results per run; fewer main-pipeline hours (currently 13 runs/day).
+- Merge or slim the long prompts (Company Research ~2.3k tokens, Opportunity Research ~2.6k, Contact Research ~1.8k).
 - Note: the 72-hour freshness rule means a company only gets a draft in the same run it was researched.
-- Merge or slim prompts (Company Research, Opportunity Research, Contact Research); use a cheaper model for formatting-only steps (e.g. the email draft).
-- Only run Contact Research / Findymail when the opportunity score is ≥ 50.
 
 **Step 2:** Top up OpenAI (consider auto-recharge) and Findymail.
 
@@ -250,7 +257,7 @@ Plus a manual trigger and the `Test Company Input` fixture (BluePeak test compan
 
 ## Appendix: Full workflow exports (n8n JSON)
 
-Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_API_KEY>>`). Each block is a complete, importable n8n workflow (`name`, `nodes`, `connections`, `settings`).
+Exported 20 Nov 2026 from the live instance (main pipeline and Discovery refreshed 21 Nov 2026 after the cost changes). Secrets are removed (`<<FINDYMAIL_API_KEY>>`). Each block is a complete, importable n8n workflow (`name`, `nodes`, `connections`, `settings`).
 
 ### A1. Grandeur BD Agent - Prospect Discovery (`iEZAsjljfX0jXF83`)
 
@@ -281,7 +288,7 @@ Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_A
    "parameters": {
     "builtInTools": {
      "webSearch": {
-      "searchContextSize": "high"
+      "searchContextSize": "medium"
      }
     },
     "modelId": {
@@ -545,7 +552,7 @@ Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_A
  },
  "meta": {
   "originalId": "iEZAsjljfX0jXF83",
-  "exportedAt": "2026-11-20"
+  "exportedAt": "2026-11-21"
  }
 }
 ```
@@ -1872,13 +1879,13 @@ Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_A
    "type": "n8n-nodes-base.code",
    "typeVersion": 2,
    "position": [
-    440,
-    460
+    1100,
+    660
    ],
    "parameters": {
-    "mode": "runOnceForAllItems",
+    "jsCode": "// Automatic intake: selects exactly ONE company per run.\n//\n// One at a time is deliberate, not a simplification. Every lookup node\n// downstream - Get Existing Companies, Get Existing Opportunities,\n// Get Existing Contacts, Get Existing Signals, Get Outreach History - is\n// marked executeOnce. In a multi-company batch each would read its table once\n// at the start of the run and never see rows appended mid-run, which would\n// hand the same Company ID or Opportunity ID to two different companies.\n// Running one company per tick and scheduling more often avoids that entirely.\n//\n// COST RULES (owner decision, 2026-11-21) - every AI call is paid, so this node\n// decides who is worth paying for BEFORE any AI runs:\n//\n// 1. Free checks first. A company is skipped, at zero cost, when it is outside\n//    the target markets, listed in Suppression, an active Client, or its domain\n//    belongs to a Competitor. Previously these were only checked at the very\n//    end, after all four AI calls had already been paid for.\n//\n// 2. Re-research only promising companies.\n//    - Promising (ICP Fit High/Medium, or any opportunity scored 50+):\n//      re-researched every 30 days.\n//    - Not promising: re-checked ONCE, 90 days after first research, then never.\n//      \"Once\" needs no extra column: the first research happens within days of\n//      First Discovered, so if Last Researched is already 90+ days after First\n//      Discovered, the recheck has happened.\n//    Previously every company was re-researched every 14 days forever.\n\nconst PROMISING_REFRESH_DAYS = 30;\nconst RECHECK_AFTER_DAYS = 90;\nconst MIN_SCORE = 50;\n\nconst SKIP_STATUS = ['excluded', 'suppressed', 'do not contact', 'client', 'closed', 'disqualified'];\n\n// Same allow-list as Check Outreach Eligibility and Discovery's Filter New\n// Companies. Keep the three in step.\nconst COUNTRY_ALIASES = {\n  'usa': 'USA', 'us': 'USA', 'u.s.': 'USA', 'u.s.a.': 'USA',\n  'united states': 'USA', 'united states of america': 'USA', 'america': 'USA',\n  'uk': 'UK', 'gb': 'UK', 'united kingdom': 'UK', 'great britain': 'UK',\n  'england': 'UK', 'scotland': 'UK', 'wales': 'UK', 'northern ireland': 'UK',\n  'australia': 'Australia',\n  'germany': 'Germany', 'deutschland': 'Germany',\n  'canada': 'Canada',\n  'singapore': 'Singapore',\n  'uae': 'UAE', 'u.a.e.': 'UAE', 'united arab emirates': 'UAE',\n  'dubai': 'UAE', 'abu dhabi': 'UAE',\n  'netherlands': 'Netherlands', 'the netherlands': 'Netherlands', 'holland': 'Netherlands',\n  'ireland': 'Ireland', 'republic of ireland': 'Ireland',\n  'new zealand': 'New Zealand', 'nz': 'New Zealand',\n  'france': 'France',\n  'switzerland': 'Switzerland',\n  'belgium': 'Belgium',\n  'sweden': 'Sweden',\n  'denmark': 'Denmark',\n  'norway': 'Norway',\n  'spain': 'Spain',\n  'italy': 'Italy',\n  'hong kong': 'Hong Kong', 'hongkong': 'Hong Kong', 'hk': 'Hong Kong',\n  'japan': 'Japan',\n  'south korea': 'South Korea', 'korea': 'South Korea',\n  'republic of korea': 'South Korea',\n  'saudi arabia': 'Saudi Arabia', 'ksa': 'Saudi Arabia',\n  'qatar': 'Qatar'\n};\n\nconst norm = (v) => (v == null ? '' : String(v)).trim();\nconst lower = (v) => norm(v).toLowerCase();\n\nconst idKey = (v) => {\n  const s = norm(v);\n  if (s === '') return '';\n  if (/^\\d+$/.test(s)) return String(parseInt(s, 10));\n  return s.toLowerCase();\n};\n\nconst normalizeDomain = (w) => {\n  let s = lower(w);\n  s = s.replace(/^https?:\\/\\//, '');\n  s = s.replace(/^www\\./, '');\n  s = s.split('/')[0].split('?')[0].split('#')[0];\n  return s.trim();\n};\n\n// Company names vary (\"Acme Ltd\" vs \"ACME Limited\"), so compare a stripped form.\nconst SUFFIX = /\\b(incorporated|inc|llc|l\\.l\\.c|ltd|limited|plc|gmbh|ag|bv|b\\.v|nv|sa|sas|srl|spa|pty|pte|co|corp|corporation|company|group|holdings|llp|lp)\\b\\.?/g;\nconst nameKey = (v) => lower(v)\n  .replace(/&/g, ' and ')\n  .replace(SUFFIX, ' ')\n  .replace(/[^a-z0-9]+/g, ' ')\n  .trim();\n\n// Excel returns dates as serial numbers (days since 1899-12-30), not strings.\n// new Date(46260) yields 1970 and would make every company look overdue.\nconst toDate = (v) => {\n  const s = norm(v);\n  if (s === '') return null;\n  if (/^\\d+(\\.\\d+)?$/.test(s)) {\n    const serial = Number(s);\n    if (serial > 20000 && serial < 90000) {\n      return new Date(Math.round((serial - 25569) * 86400000));\n    }\n  }\n  const d = new Date(s);\n  return isNaN(d.getTime()) ? null : d;\n};\n\nconst DAY = 86400000;\nconst now = Date.now();\n\n// ---- Free reference lists (read before this node; no AI cost) ----\n\nconst suppression = $('Early Suppression').all().map(i => i.json)\n  .filter(r => r && (norm(r['Company ID']) || norm(r['Name/Company'])));\nconst clients = $('Early Clients').all().map(i => i.json)\n  .filter(r => r && (norm(r['Company ID']) || norm(r['Company Name'])));\nconst competitors = $('Early Competitors').all().map(i => i.json)\n  .filter(r => r && (norm(r['Provider Website']) || norm(r['Provider Name'])));\nconst opportunities = $('Early Opportunity Scores').all().map(i => i.json)\n  .filter(r => r && norm(r['Company ID']));\n\nconst blockedIds = {};\nconst blockedNames = {};\nconst blockedDomains = {};\n\nfor (const s of suppression) {\n  // Company-level rows only; a row with just a Contact ID blocks that person,\n  // which Check Outreach Eligibility already handles.\n  if (norm(s['Contact ID']) && !norm(s['Company ID'])) continue;\n  if (norm(s['Company ID'])) blockedIds[idKey(s['Company ID'])] = 'suppressed';\n  const nc = norm(s['Name/Company']);\n  if (nc) {\n    // The owner may type a name or a website here; accept either.\n    if (/\\.[a-z]{2,}/i.test(nc) && !/\\s/.test(nc)) blockedDomains[normalizeDomain(nc)] = 'suppressed';\n    else if (nameKey(nc)) blockedNames[nameKey(nc)] = 'suppressed';\n  }\n}\n\nfor (const c of clients) {\n  if (['former', 'inactive', 'churned', 'past'].indexOf(lower(c['Client Status'])) !== -1) continue;\n  if (norm(c['Company ID'])) blockedIds[idKey(c['Company ID'])] = 'client';\n  if (nameKey(c['Company Name'])) blockedNames[nameKey(c['Company Name'])] = 'client';\n}\n\nfor (const c of competitors) {\n  const d = normalizeDomain(c['Provider Website']);\n  if (d) blockedDomains[d] = 'competitor';\n  if (nameKey(c['Provider Name'])) blockedNames[nameKey(c['Provider Name'])] = 'competitor';\n}\n\nconst bestScore = {};\nfor (const o of opportunities) {\n  const k = idKey(o['Company ID']);\n  const sc = Number(o['Opportunity Score']) || 0;\n  if (!bestScore[k] || sc > bestScore[k]) bestScore[k] = sc;\n}\n\n// ---- Choose the company ----\n\nconst rows = $('Get Research Queue').all()\n  .map(i => i.json)\n  .filter(r => r && norm(r['Company Name']) && norm(r['Website']));\n\nconst candidates = [];\n\nfor (const r of rows) {\n  if (SKIP_STATUS.indexOf(lower(r['Company Status'])) !== -1) continue;\n\n  // Free check: market. A blank country is allowed through - research is what\n  // verifies it - but a known out-of-market country is never paid for.\n  const rawCountry = norm(r['Country']);\n  if (rawCountry && !COUNTRY_ALIASES[lower(rawCountry)]) continue;\n\n  // Free checks: suppression, client, competitor.\n  const domain = normalizeDomain(r['Company Key'] || r['Website']);\n  if (norm(r['Company ID']) && blockedIds[idKey(r['Company ID'])]) continue;\n  if (domain && blockedDomains[domain]) continue;\n  if (nameKey(r['Company Name']) && blockedNames[nameKey(r['Company Name'])]) continue;\n\n  // An explicit future Next Research Date always wins.\n  const nextDue = toDate(r['Next Research Date']);\n  if (nextDue !== null && nextDue.getTime() > now) continue;\n\n  const lastResearched = toDate(r['Last Researched']);\n  if (lastResearched === null) {\n    // Never researched: front of the queue.\n    candidates.push({ row: r, priority: 0, daysSince: null });\n    continue;\n  }\n\n  const daysSince = Math.floor((now - lastResearched.getTime()) / DAY);\n  const icp = lower(r['ICP Fit']);\n  const promising = icp === 'high' || icp === 'medium' ||\n    (bestScore[idKey(r['Company ID'])] || 0) >= MIN_SCORE;\n\n  if (promising) {\n    if (daysSince < PROMISING_REFRESH_DAYS) continue;\n    candidates.push({ row: r, priority: 1, daysSince: daysSince });\n    continue;\n  }\n\n  // Not promising: one recheck at 90 days, then never.\n  if (daysSince < RECHECK_AFTER_DAYS) continue;\n  const firstDiscovered = toDate(r['First Discovered']);\n  // No First Discovered means we cannot tell whether the recheck happened;\n  // treat it as done rather than risk re-paying every 90 days forever.\n  if (firstDiscovered === null) continue;\n  const gapAtLastResearch = Math.floor((lastResearched.getTime() - firstDiscovered.getTime()) / DAY);\n  if (gapAtLastResearch >= RECHECK_AFTER_DAYS) continue;\n  candidates.push({ row: r, priority: 2, daysSince: daysSince });\n}\n\nif (!candidates.length) {\n  // Nothing worth paying for this tick. Zero items stops the run before any AI.\n  return [];\n}\n\n// New companies first, then promising refreshes, then one-off rechecks;\n// within a tier, the longest-waiting first.\ncandidates.sort((a, b) => {\n  if (a.priority !== b.priority) return a.priority - b.priority;\n  return (b.daysSince || 0) - (a.daysSince || 0);\n});\n\nconst picked = candidates[0].row;\n\nreturn [{ json: {\n  'Company Name': norm(picked['Company Name']),\n  'website': norm(picked['Website']),\n  'country': norm(picked['Country']),\n  'industry': norm(picked['Industry']),\n  'company_type': norm(picked['Company Type']),\n  'revenue': Number(picked['Revenue']) || 0\n} }];\n",
     "language": "javaScript",
-    "jsCode": "// Automatic intake: selects exactly ONE company per run.\n//\n// One at a time is deliberate, not a simplification. Every lookup node\n// downstream - Get Existing Companies, Get Existing Opportunities,\n// Get Existing Contacts, Get Existing Signals, Get Outreach History - is\n// marked executeOnce. In a multi-company batch each would read its table once\n// at the start of the run and never see rows appended mid-run, which would\n// hand the same Company ID or Opportunity ID to two different companies.\n// Running one company per tick and scheduling more often avoids that entirely.\n\n// Hard floor on re-research. Company Research writes a Next Research Date, and\n// without a floor a badly set date re-researches the same company every tick\n// and burns OpenAI credit re-deriving data already on file.\nconst MIN_DAYS_BETWEEN_RESEARCH = 14;\n\nconst SKIP_STATUS = ['excluded', 'suppressed', 'do not contact', 'client', 'closed', 'disqualified'];\n\nconst norm = (v) => (v == null ? '' : String(v)).trim();\nconst lower = (v) => norm(v).toLowerCase();\n\n// Excel returns dates as serial numbers (days since 1899-12-30), not strings.\n// new Date(46260) yields 1970 and would make every company look overdue.\nconst toDate = (v) => {\n  const s = norm(v);\n  if (s === '') return null;\n  if (/^\\d+(\\.\\d+)?$/.test(s)) {\n    const serial = Number(s);\n    if (serial > 20000 && serial < 90000) {\n      return new Date(Math.round((serial - 25569) * 86400000));\n    }\n  }\n  const d = new Date(s);\n  return isNaN(d.getTime()) ? null : d;\n};\n\nconst DAY = 86400000;\nconst now = Date.now();\n\nconst rows = $input.all()\n  .map(i => i.json)\n  .filter(r => r && norm(r['Company Name']) && norm(r['Website']));\n\nconst candidates = [];\n\nfor (const r of rows) {\n  if (SKIP_STATUS.indexOf(lower(r['Company Status'])) !== -1) continue;\n\n  // Next Research Date is a deliberate deferral and outranks everything below,\n  // INCLUDING the never-researched fast path. The contact gate defers exactly\n  // those rows: discovery found the company, Hunter found no email at its\n  // domain, so research never ran and Last Researched is still blank. Checking\n  // this only in the already-researched branch - as it was - would re-pick a\n  // deferred company on the very next tick, forever, which is the one outcome\n  // the gate exists to prevent.\n  const nextDue = toDate(r['Next Research Date']);\n  if (nextDue !== null && nextDue.getTime() > now) continue;\n\n  const lastResearched = toDate(r['Last Researched']);\n\n  // Never researched - straight to the front of the queue.\n  if (lastResearched === null) {\n    candidates.push({ row: r, priority: 0, daysSince: null });\n    continue;\n  }\n\n  const daysSince = Math.floor((now - lastResearched.getTime()) / DAY);\n  if (daysSince < MIN_DAYS_BETWEEN_RESEARCH) continue;\n\n  candidates.push({ row: r, priority: 1, daysSince: daysSince });\n}\n\nif (!candidates.length) {\n  // Nothing due. Returning zero items stops the run here - a node with no input\n  // does not execute in n8n - and the next scheduled tick looks again. This is\n  // the normal idle state, not a failure.\n  return [];\n}\n\n// New companies first, then the most overdue.\ncandidates.sort((a, b) => {\n  if (a.priority !== b.priority) return a.priority - b.priority;\n  return (b.daysSince || 0) - (a.daysSince || 0);\n});\n\nconst picked = candidates[0].row;\n\n// Emit exactly the six field names the research chain already reads, so nothing\n// downstream needed changing to accept a queued company instead of a typed one.\nreturn [{ json: {\n  'Company Name': norm(picked['Company Name']),\n  'website': norm(picked['Website']),\n  'country': norm(picked['Country']),\n  'industry': norm(picked['Industry']),\n  'company_type': norm(picked['Company Type']),\n  'revenue': Number(picked['Revenue']) || 0\n} }];"
+    "mode": "runOnceForAllItems"
    }
   },
   {
@@ -1909,6 +1916,190 @@ Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_A
     "language": "javaScript",
     "mode": "runOnceForAllItems",
     "jsCode": "const KEY = 'Bearer <<FINDYMAIL_API_KEY>>';\nconst NAME_URL = 'https://app.findymail.com/api/search/name';\nconst LINKEDIN_URL = 'https://app.findymail.com/api/search/linkedin';\n\nconst helpers = this.helpers;\nconst norm = (v) => (v == null ? '' : String(v)).trim();\nconst domainOf = (w) => {\n  let s = norm(w).toLowerCase().replace(/^https?:\\/\\//, '').replace(/^www\\./, '');\n  return s.split('/')[0].split('?')[0].split('#')[0].trim();\n};\nconst isLinkedIn = (u) => /linkedin\\.com\\/in\\//i.test(norm(u));\n\nconst company = $('Assign Company ID').first().json;\nconst domain = domainOf(company['Website']);\n\nasync function findymail(url, body) {\n  try {\n    const res = await helpers.httpRequest({\n      method: 'POST',\n      url: url,\n      headers: { Authorization: KEY, 'Content-Type': 'application/json', Accept: 'application/json' },\n      body: body,\n      json: true,\n      returnFullResponse: true,\n      ignoreHttpStatusErrors: true,\n      timeout: 20000\n    });\n    const status = Number(res.statusCode) || 0;\n    const contact = (res && res.body && res.body.contact) ? res.body.contact : null;\n    return { status: status, contact: contact };\n  } catch (e) {\n    return { status: 0, contact: null };\n  }\n}\n\nconst out = [];\nfor (const item of $input.all()) {\n  const c = Object.assign({}, item.json);\n  const name = norm(c['Name']);\n  const li = norm(c['LinkedIn URL']);\n\n  let found = null;\n  let via = '';\n\n  // 1) LinkedIn URL first - highest accuracy\n  if (isLinkedIn(li)) {\n    const r = await findymail(LINKEDIN_URL, { linkedin_url: li });\n    if (r.contact && norm(r.contact.email).indexOf('@') !== -1) { found = r.contact; via = 'LinkedIn URL'; }\n  }\n\n  // 2) Fallback: name + company domain\n  if (!found && name && domain) {\n    const r = await findymail(NAME_URL, { name: name, domain: domain });\n    if (r.contact && norm(r.contact.email).indexOf('@') !== -1) { found = r.contact; via = 'name + domain'; }\n  }\n\n  if (found) {\n    c['Email'] = norm(found.email);\n    c['Email Verification Status'] = 'Verified';\n    if (!norm(c['Job Title']) && norm(found.job_title)) c['Job Title'] = norm(found.job_title);\n    if (!norm(c['LinkedIn URL']) && norm(found.linkedin_url)) c['LinkedIn URL'] = norm(found.linkedin_url);\n    const note = 'Email found via Findymail (' + via + ')';\n    c['Notes'] = norm(c['Notes']) ? norm(c['Notes']) + ' | ' + note : note;\n  }\n\n  out.push({ json: c });\n}\nreturn out;"
+   }
+  },
+  {
+   "id": "073b7ef2-93c9-4d40-9770-e26724c1e960",
+   "name": "Early Suppression",
+   "type": "n8n-nodes-base.microsoftExcel",
+   "typeVersion": 2.2,
+   "position": [
+    220,
+    660
+   ],
+   "parameters": {
+    "filters": {},
+    "operation": "getRows",
+    "rawData": false,
+    "resource": "table",
+    "returnAll": true,
+    "table": {
+     "__rl": true,
+     "cachedResultName": "tblSuppression",
+     "mode": "list",
+     "value": "{00000000-000C-0000-FFFF-FFFF06000000}"
+    },
+    "workbook": {
+     "__rl": true,
+     "cachedResultName": "Grandeur_BD_Agent_V1",
+     "mode": "list",
+     "value": "01XTNPD6XV4WCHZOPO5FHLHNSX75DOR6W6"
+    },
+    "worksheet": {
+     "__rl": true,
+     "cachedResultName": "Suppression",
+     "mode": "list",
+     "value": "{00000000-0001-0000-0700-000000000000}"
+    }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "alwaysOutputData": true,
+   "executeOnce": true,
+   "credentials": {
+    "microsoftExcelOAuth2Api": {
+     "id": "t05ZuN05jLPuMapG",
+     "name": "Microsoft Excel account"
+    }
+   }
+  },
+  {
+   "id": "63f56399-485f-4e03-a86e-e3800c28b162",
+   "name": "Early Clients",
+   "type": "n8n-nodes-base.microsoftExcel",
+   "typeVersion": 2.2,
+   "position": [
+    440,
+    660
+   ],
+   "parameters": {
+    "filters": {},
+    "operation": "getRows",
+    "rawData": false,
+    "resource": "table",
+    "returnAll": true,
+    "table": {
+     "__rl": true,
+     "cachedResultName": "tblClients",
+     "mode": "list",
+     "value": "{00000000-000C-0000-FFFF-FFFF07000000}"
+    },
+    "workbook": {
+     "__rl": true,
+     "cachedResultName": "Grandeur_BD_Agent_V1",
+     "mode": "list",
+     "value": "01XTNPD6XV4WCHZOPO5FHLHNSX75DOR6W6"
+    },
+    "worksheet": {
+     "__rl": true,
+     "cachedResultName": "Clients",
+     "mode": "list",
+     "value": "{00000000-0001-0000-0800-000000000000}"
+    }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "alwaysOutputData": true,
+   "executeOnce": true,
+   "credentials": {
+    "microsoftExcelOAuth2Api": {
+     "id": "t05ZuN05jLPuMapG",
+     "name": "Microsoft Excel account"
+    }
+   }
+  },
+  {
+   "id": "7ca6dfd8-d567-491f-aa41-18948708a6d2",
+   "name": "Early Competitors",
+   "type": "n8n-nodes-base.microsoftExcel",
+   "typeVersion": 2.2,
+   "position": [
+    660,
+    660
+   ],
+   "parameters": {
+    "filters": {},
+    "operation": "getRows",
+    "rawData": false,
+    "resource": "table",
+    "returnAll": true,
+    "table": {
+     "__rl": true,
+     "cachedResultName": "tblCompetitors",
+     "mode": "list",
+     "value": "{00000000-000C-0000-FFFF-FFFF08000000}"
+    },
+    "workbook": {
+     "__rl": true,
+     "cachedResultName": "Grandeur_BD_Agent_V1",
+     "mode": "list",
+     "value": "01XTNPD6XV4WCHZOPO5FHLHNSX75DOR6W6"
+    },
+    "worksheet": {
+     "__rl": true,
+     "cachedResultName": "Competitors",
+     "mode": "list",
+     "value": "{00000000-0001-0000-0900-000000000000}"
+    }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "alwaysOutputData": true,
+   "executeOnce": true,
+   "credentials": {
+    "microsoftExcelOAuth2Api": {
+     "id": "t05ZuN05jLPuMapG",
+     "name": "Microsoft Excel account"
+    }
+   }
+  },
+  {
+   "id": "da3c6f82-0c6e-44ea-bfac-2ae6a587a715",
+   "name": "Early Opportunity Scores",
+   "type": "n8n-nodes-base.microsoftExcel",
+   "typeVersion": 2.2,
+   "position": [
+    880,
+    660
+   ],
+   "parameters": {
+    "filters": {},
+    "operation": "getRows",
+    "rawData": false,
+    "resource": "table",
+    "returnAll": true,
+    "table": {
+     "__rl": true,
+     "cachedResultName": "tblOpportunities",
+     "mode": "list",
+     "value": "{00000000-000C-0000-FFFF-FFFF01000000}"
+    },
+    "workbook": {
+     "__rl": true,
+     "cachedResultName": "Grandeur_BD_Agent_V1",
+     "mode": "list",
+     "value": "01XTNPD6XV4WCHZOPO5FHLHNSX75DOR6W6"
+    },
+    "worksheet": {
+     "__rl": true,
+     "cachedResultName": "Opportunities",
+     "mode": "list",
+     "value": "{00000000-0001-0000-0200-000000000000}"
+    }
+   },
+   "retryOnFail": true,
+   "maxTries": 3,
+   "waitBetweenTries": 2000,
+   "alwaysOutputData": true,
+   "executeOnce": true,
+   "credentials": {
+    "microsoftExcelOAuth2Api": {
+     "id": "t05ZuN05jLPuMapG",
+     "name": "Microsoft Excel account"
+    }
    }
   }
  ],
@@ -2199,17 +2390,6 @@ Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_A
     ]
    ]
   },
-  "Get Research Queue": {
-   "main": [
-    [
-     {
-      "node": "Pick Next Company",
-      "type": "main",
-      "index": 0
-     }
-    ]
-   ]
-  },
   "Upsert Contact": {
    "main": [
     [
@@ -2275,6 +2455,61 @@ Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_A
      }
     ]
    ]
+  },
+  "Get Research Queue": {
+   "main": [
+    [
+     {
+      "node": "Early Suppression",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Early Suppression": {
+   "main": [
+    [
+     {
+      "node": "Early Clients",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Early Clients": {
+   "main": [
+    [
+     {
+      "node": "Early Competitors",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Early Competitors": {
+   "main": [
+    [
+     {
+      "node": "Early Opportunity Scores",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
+  },
+  "Early Opportunity Scores": {
+   "main": [
+    [
+     {
+      "node": "Pick Next Company",
+      "type": "main",
+      "index": 0
+     }
+    ]
+   ]
   }
  },
  "settings": {
@@ -2286,7 +2521,7 @@ Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_A
  },
  "meta": {
   "originalId": "jIghxNOFdVshn2d3",
-  "exportedAt": "2026-11-20"
+  "exportedAt": "2026-11-21"
  }
 }
 ```
@@ -2760,7 +2995,7 @@ Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_A
  },
  "meta": {
   "originalId": "sEaRV2WFAshZ9uFu",
-  "exportedAt": "2026-11-20"
+  "exportedAt": "2026-11-21"
  }
 }
 ```
@@ -3313,7 +3548,7 @@ Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_A
  },
  "meta": {
   "originalId": "ie6wPd70DBL6IPD8",
-  "exportedAt": "2026-11-20"
+  "exportedAt": "2026-11-21"
  }
 }
 ```
@@ -3734,7 +3969,7 @@ Exported 20 Nov 2026 from the live instance. Secrets are removed (`<<FINDYMAIL_A
  },
  "meta": {
   "originalId": "lAufPqbyL5XBBbEv",
-  "exportedAt": "2026-11-20"
+  "exportedAt": "2026-11-21"
  }
 }
 ```
