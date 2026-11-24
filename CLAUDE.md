@@ -27,7 +27,9 @@ Firm name in outreach: **Grandeur Advisors LLP** (Advisors, never Advisory).
 1. **Never invent anything.** No made-up companies, contacts, emails, numbers or claims.
    Unknown stays blank.
 2. **Human approval before any outbound email.** Arya drafts. The owner approves.
-3. No on-site or hybrid-only roles (Grandeur delivers remotely).
+3. Only roles that are explicitly **on-site** are blocked. Remote and hybrid roles are ready
+   to send (owner rule, 2026-11-24). The email for them is written the same as any other
+   proposal: no mention of remote working, location or India.
 4. Send window 15:00–02:00 IST, Mon–Fri, at most one email per 10 minutes.
 5. Every email must fail the swap test: lead with the prospect's own problem, in the words
    of their posting.
