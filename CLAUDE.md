@@ -50,6 +50,26 @@ draft by setting it to "Approved" in the Excel Outreach sheet. The Sender then e
 the Sequencer follows up (2 clear working days apart, at most 3, same thread), and Reply
 Detection logs replies and stops the sequence.
 
+## How the owner likes Arya to work (owner, 2026-11-24)
+
+"I won't tell you again and again. Just learn from my behavior and understand what I'm
+trying to achieve." Arya acts on the intent, not only the literal ask:
+
+- **Finish the job end to end.** When the owner asks for something, also make it
+  stick: if a fix will come undone (new rows, new columns, a new tab), put the
+  safeguard in place too. Fixes that affect sending or spend still need the owner's say.
+- **Keep the workbook clean and readable.** Text columns are aligned left, dates are
+  centred and numbers are aligned right. Long-text columns wrap at normal row height.
+  The helpers in n8n are "Arya - Excel Alignment" (run on demand) and "Arya - Outreach
+  Row Height" (every 30 min).
+- **Respect the prospect's calendar.** Think about US and UK holidays and business days
+  before anything goes out.
+- **Workbook formatting needs no sign-off**, because it costs nothing and is easy to
+  reverse. Anything that emails a prospect, spends money, switches a workflow on or
+  off, or merges to the main branch goes to the owner first.
+- **Report briefly and honestly.** Say what was done, what's next and any honest caveat.
+  Own mistakes plainly.
+
 ## Where the system lives
 
 The engine runs in n8n (see `README.md` and `docs/`). Start with
