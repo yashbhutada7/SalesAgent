@@ -30,7 +30,12 @@ Firm name in outreach: **Grandeur Advisors LLP** (Advisors, never Advisory).
 3. Only roles that are explicitly **on-site** are blocked. Remote and hybrid roles are ready
    to send (owner rule, 2026-11-24). The email for them is written the same as any other
    proposal: no mention of remote working, location or India.
-4. Send window 15:00–02:00 IST, Mon–Fri, at most one email per 10 minutes.
+4. Send window 15:00–02:00 IST, Mon–Fri, at most one email per 10 minutes. No email or
+   follow-up goes out on a public holiday in the prospect's country (owner rule,
+   2026-11-24). For the USA that means federal holidays plus the Friday after
+   Thanksgiving, and for the UK it means England & Wales bank holidays. The Sender and
+   the Follow-Up Sequencer compute these by rule. A later **Follow-Up Date** typed on a
+   sent Outreach row also holds the next follow-up until that date.
 5. Every email must fail the swap test: lead with the prospect's own problem, in the words
    of their posting.
 6. OpenAI spend cap: $8/day across Discovery and Research (the `OpenAI Daily Spend` data table).
