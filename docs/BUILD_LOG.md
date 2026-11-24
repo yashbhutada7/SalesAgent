@@ -3029,3 +3029,15 @@ scored 0 (Monitoring) -> correctly not eligible for outreach.
 
 Published: Prospect Discovery `e0082356`, Grandeur BD Agent V1 `82611233`. Sender, Reply
 Detection and Follow-Up Sequencer left unpublished pending owner review of first drafts.
+
+### Later on 2026-11-24 - owner decisions
+- **Remote rule:** a posting that offers remote at all ("hybrid or remote", "remote eligible")
+  is tagged `WORK ARRANGEMENT: Remote` and qualifies; hybrid-only and on-site do not. Prompt
+  change in Opportunity Research, published `353dc54b`.
+- **Sending:** Outreach Sender and Reply Detection live. Sender only sends rows with
+  Approval Status = Approved and no Sent Date; every other status is left untouched.
+- **Follow-ups:** Follow-Up Sequencer stays on (owner confirmed) - up to 3 threaded
+  follow-ups, 2 working days apart, only on approved-and-sent emails, stops on reply.
+- A parallel session ("Arya" helper workflows) also edited these workflows; its manual
+  Concord re-test (exec 9627) bypassed the budget gate and was booked into OpenAI Daily
+  Spend after the fact, as was the pre-gate discovery test (9621).
