@@ -32,6 +32,16 @@ Firm name in outreach: **Grandeur Advisors LLP** (Advisors, never Advisory).
 5. Every email must fail the swap test: lead with the prospect's own problem, in the words
    of their posting.
 6. OpenAI spend cap: $8/day across Discovery and Research (the `OpenAI Daily Spend` data table).
+7. **Never switch off (unpublish) any workflow without telling the owner first** (owner rule,
+   2026-11-24). If any workflow is found switched off, tell the owner straight away.
+
+## Arya's standing job (owner instruction, 2026-11-24)
+
+All five workflows stay switched on: Prospect Discovery, Grandeur BD Agent V1 (research and
+drafts), Outreach Sender, Follow-Up Sequencer and Reply Detection. The owner approves a
+draft by setting it to "Approved" in the Excel Outreach sheet. The Sender then emails it,
+the Sequencer follows up (2 clear working days apart, at most 3, same thread), and Reply
+Detection logs replies and stops the sequence.
 
 ## Where the system lives
 
