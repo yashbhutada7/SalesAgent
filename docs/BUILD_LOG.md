@@ -2988,3 +2988,44 @@ Step 1. Confirmed authoritatively in the mailbox: "RE: P2P, O2C and close suppor
 conversationId as the original 2026-09-03 "P2P, O2C and close support" - i.e. the follow-up lands
 in the original thread, sent to the prospect, no 404, no error branch. Published 26c2863a.
 Throwaway "Threading Probe" workflow archived.
+
+## 2026-11-24 - Go-live for real leads: empty-sheet fix and an $8/day OpenAI cap
+
+Context: the workbook was wiped on 2026-11-20 (backup kept at
+`Grandeur BD Agent/Grandeur_BD_Agent_V1_backup_2026-11-20.xlsx`), all workflows were
+unpublished, and OpenAI had run out of credits. The owner topped up OpenAI, deleted unused
+columns by hand (Companies: Revenue/Type/Band, Employee Count/Type/Band, Finance Team Size,
+Existing Outsourcing, Current Provider, Company Status; Opportunities: Estimated Monthly/Annual
+Value, Estimate Type, Estimate Basis) and asked for real searching under **$8/day**.
+
+### Bug: Discovery dead-ended on an empty Companies sheet
+`Get Existing Companies` returns zero items when the table is empty, so `Filter New Companies`
+and `Append New Companies` never ran (exec 9621 found 4 real companies and saved none). Fixed
+with `alwaysOutputData` (plus retries). Exec 9622 appended 3 companies.
+
+### $8/day budget gate (both AI workflows)
+New n8n Data Table **OpenAI Daily Spend** (`1ueTm3oWt7KgG8Ip`): day, workflow, execution_id,
+company, reserved_usd. Before any AI call each run reads today's rows (IST day), and stops at
+no cost if `today's total + this run's reservation > $8`; otherwise it inserts its reservation
+and continues. Reservations are pessimistic: Discovery $0.30/run, Research $0.75/company.
+Research's gate sits after Pick Next Company, so empty ticks reserve nothing. Reserve Spend is
+positioned above the AI branch so v1 ordering writes the reservation before the AI runs.
+
+Max daily load under the cap: 3 discovery runs ($0.90) + 9 researched companies ($6.75).
+
+### Measured tokens (exec 9621/9623)
+```
+Prospect Discovery AI   25,864 in / 1,192 out
+Company Research AI     14,406 in / 1,277 out
+Opportunity Research    15,705 in /   492 out
+Contact Research AI     24,772 in /   797 out
+```
+Web-search call charges are not in n8n's token metadata - recalibrate the reservations against
+the OpenAI usage dashboard after the first full day.
+
+First live research (Whippany Actuation Systems): Verified, ICP Medium / Priority High,
+2 finance contacts found (VP Finance + analyst) but Findymail found no email, opportunity
+scored 0 (Monitoring) -> correctly not eligible for outreach.
+
+Published: Prospect Discovery `e0082356`, Grandeur BD Agent V1 `82611233`. Sender, Reply
+Detection and Follow-Up Sequencer left unpublished pending owner review of first drafts.
