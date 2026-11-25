@@ -2988,3 +2988,87 @@ Step 1. Confirmed authoritatively in the mailbox: "RE: P2P, O2C and close suppor
 conversationId as the original 2026-09-03 "P2P, O2C and close support" - i.e. the follow-up lands
 in the original thread, sent to the prospect, no 404, no error branch. Published 26c2863a.
 Throwaway "Threading Probe" workflow archived.
+
+## 2026-11-24 - Go-live for real leads: empty-sheet fix and an $8/day OpenAI cap
+
+Context: the workbook was wiped on 2026-11-20 (backup kept at
+`Grandeur BD Agent/Grandeur_BD_Agent_V1_backup_2026-11-20.xlsx`), all workflows were
+unpublished, and OpenAI had run out of credits. The owner topped up OpenAI, deleted unused
+columns by hand (Companies: Revenue/Type/Band, Employee Count/Type/Band, Finance Team Size,
+Existing Outsourcing, Current Provider, Company Status; Opportunities: Estimated Monthly/Annual
+Value, Estimate Type, Estimate Basis) and asked for real searching under **$8/day**.
+
+### Bug: Discovery dead-ended on an empty Companies sheet
+`Get Existing Companies` returns zero items when the table is empty, so `Filter New Companies`
+and `Append New Companies` never ran (exec 9621 found 4 real companies and saved none). Fixed
+with `alwaysOutputData` (plus retries). Exec 9622 appended 3 companies.
+
+### $8/day budget gate (both AI workflows)
+New n8n Data Table **OpenAI Daily Spend** (`1ueTm3oWt7KgG8Ip`): day, workflow, execution_id,
+company, reserved_usd. Before any AI call each run reads today's rows (IST day), and stops at
+no cost if `today's total + this run's reservation > $8`; otherwise it inserts its reservation
+and continues. Reservations are pessimistic: Discovery $0.30/run, Research $0.75/company.
+Research's gate sits after Pick Next Company, so empty ticks reserve nothing. Reserve Spend is
+positioned above the AI branch so v1 ordering writes the reservation before the AI runs.
+
+Max daily load under the cap: 3 discovery runs ($0.90) + 9 researched companies ($6.75).
+
+### Measured tokens (exec 9621/9623)
+```
+Prospect Discovery AI   25,864 in / 1,192 out
+Company Research AI     14,406 in / 1,277 out
+Opportunity Research    15,705 in /   492 out
+Contact Research AI     24,772 in /   797 out
+```
+Web-search call charges are not in n8n's token metadata - recalibrate the reservations against
+the OpenAI usage dashboard after the first full day.
+
+First live research (Whippany Actuation Systems): Verified, ICP Medium / Priority High,
+2 finance contacts found (VP Finance + analyst) but Findymail found no email, opportunity
+scored 0 (Monitoring) -> correctly not eligible for outreach.
+
+Published: Prospect Discovery `e0082356`, Grandeur BD Agent V1 `82611233`. Sender, Reply
+Detection and Follow-Up Sequencer left unpublished pending owner review of first drafts.
+
+### Later on 2026-11-24 - owner decisions
+- **Remote rule:** a posting that offers remote at all ("hybrid or remote", "remote eligible")
+  is tagged `WORK ARRANGEMENT: Remote` and qualifies; hybrid-only and on-site do not. Prompt
+  change in Opportunity Research, published `353dc54b`.
+- **Sending:** Outreach Sender and Reply Detection live. Sender only sends rows with
+  Approval Status = Approved and no Sent Date; every other status is left untouched.
+- **Follow-ups:** Follow-Up Sequencer stays on (owner confirmed) - up to 3 threaded
+  follow-ups, 2 working days apart, only on approved-and-sent emails, stops on reply.
+- A parallel session ("Arya" helper workflows) also edited these workflows; its manual
+
+
+2026-11-25 — Moved to self-hosted n8n on the office PC (Cloud off)
+All 5 live workflows now run in Docker on the office PC (http://localhost:5678) instead of n8n Cloud. Every Cloud workflow is switched off (checked just before go-live), so no prospect can be emailed twice.
+
+Version: pinned to n8n 2.48.7 through .env N8N_VERSION. 2.48.6 was requested, but the local database had already run on 2.48.7, so it was not downgraded. Timezone is Asia/Kolkata, run timeout is 30 min, and run history is pruned after 14 days.
+Workflows: copied from Cloud as of 25 Nov with the same IDs: V1 jIghxNOFdVshn2d3, Prospect Discovery iEZAsjljfX0jXF83, Outreach Sender sEaRV2WFAshZ9uFu, Reply Detection lAufPqbyL5XBBbEv, Follow-Up Sequencer ie6wPd70DBL6IPD8. The copies (one holds the Findymail key) are in deploy/local-n8n/backup/, which is gitignored and never committed. The older local copies from 20 Nov pointed at a stale info@ workbook copy and were replaced.
+Workbook: stays in accounting@'s OneDrive (01XTNPD6XV4WCHZOPO5FHLHNSX75DOR6W6). The helper workflows (Outreach Audit, Funnel Diagnostic, Findymail Backfill) point there too.
+$8/day OpenAI cap: new local data table "OpenAI Daily Spend" (5dOwfpzi6i3OLIrg), with columns day, workflow, execution_id, company and reserved_usd. Get Today Spend and Reserve Spend in Discovery and V1 now use it. Tested: with $8 already reserved, Discovery stopped at Budget Gate before any AI call.
+Credentials: same IDs as Cloud, so nodes link without edits.
+Microsoft Excel is signed in as accounting@.
+Microsoft Outlook is signed in as info@.
+OpenAI has a new key.
+Both Microsoft credentials use the existing Entra app "Grandeur n8n (self-hosted)", which is single-tenant and has the redirect http://localhost:5678/rest/oauth2-credential/callback. The old client secret had stopped working ("Client authentication failed"). New secrets were made on 25 Nov and expire on 24 Nov 2028.
+24/7 setup:
+Docker Desktop starts at sign-in, and the container restarts by itself.
+Windows sleep and hibernate are set to Never.
+The daily backup runs at 02:30 (Task Scheduler "Grandeur n8n backup").
+Manual test runs (25 Nov), all passed:
+Reply Detection read 58 mails and found no new replies.
+Sender found nothing approved and unsent, so it sent nothing.
+Follow-Up found nothing due, so it sent nothing.
+Discovery ran on the USA hiring brief and appended 4 companies.
+V1 researched Accredited Insurance (Grand 007). It found 3 contacts with no verified email and scored 0, so no draft was written.
+$1.05 was reserved against the cap.
+Switched on locally after the owner said yes.
+Notes for later:
+
+The n8n execute CLI cannot use data tables, so test from the editor instead.
+Before any manual Sender or Follow-Up run, check the Outreach sheet, because those runs send real email.
+
+  Concord re-test (exec 9627) bypassed the budget gate and was booked into OpenAI Daily
+  Spend after the fact, as was the pre-gate discovery test (9621).
