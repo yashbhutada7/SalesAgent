@@ -3039,5 +3039,36 @@ Detection and Follow-Up Sequencer left unpublished pending owner review of first
 - **Follow-ups:** Follow-Up Sequencer stays on (owner confirmed) - up to 3 threaded
   follow-ups, 2 working days apart, only on approved-and-sent emails, stops on reply.
 - A parallel session ("Arya" helper workflows) also edited these workflows; its manual
+
+
+2026-11-25 — Moved to self-hosted n8n on the office PC (Cloud off)
+All 5 live workflows now run in Docker on the office PC (http://localhost:5678) instead of n8n Cloud. Every Cloud workflow is switched off (checked just before go-live), so no prospect can be emailed twice.
+
+Version: pinned to n8n 2.48.7 through .env N8N_VERSION. 2.48.6 was requested, but the local database had already run on 2.48.7, so it was not downgraded. Timezone is Asia/Kolkata, run timeout is 30 min, and run history is pruned after 14 days.
+Workflows: copied from Cloud as of 25 Nov with the same IDs: V1 jIghxNOFdVshn2d3, Prospect Discovery iEZAsjljfX0jXF83, Outreach Sender sEaRV2WFAshZ9uFu, Reply Detection lAufPqbyL5XBBbEv, Follow-Up Sequencer ie6wPd70DBL6IPD8. The copies (one holds the Findymail key) are in deploy/local-n8n/backup/, which is gitignored and never committed. The older local copies from 20 Nov pointed at a stale info@ workbook copy and were replaced.
+Workbook: stays in accounting@'s OneDrive (01XTNPD6XV4WCHZOPO5FHLHNSX75DOR6W6). The helper workflows (Outreach Audit, Funnel Diagnostic, Findymail Backfill) point there too.
+$8/day OpenAI cap: new local data table "OpenAI Daily Spend" (5dOwfpzi6i3OLIrg), with columns day, workflow, execution_id, company and reserved_usd. Get Today Spend and Reserve Spend in Discovery and V1 now use it. Tested: with $8 already reserved, Discovery stopped at Budget Gate before any AI call.
+Credentials: same IDs as Cloud, so nodes link without edits.
+Microsoft Excel is signed in as accounting@.
+Microsoft Outlook is signed in as info@.
+OpenAI has a new key.
+Both Microsoft credentials use the existing Entra app "Grandeur n8n (self-hosted)", which is single-tenant and has the redirect http://localhost:5678/rest/oauth2-credential/callback. The old client secret had stopped working ("Client authentication failed"). New secrets were made on 25 Nov and expire on 24 Nov 2028.
+24/7 setup:
+Docker Desktop starts at sign-in, and the container restarts by itself.
+Windows sleep and hibernate are set to Never.
+The daily backup runs at 02:30 (Task Scheduler "Grandeur n8n backup").
+Manual test runs (25 Nov), all passed:
+Reply Detection read 58 mails and found no new replies.
+Sender found nothing approved and unsent, so it sent nothing.
+Follow-Up found nothing due, so it sent nothing.
+Discovery ran on the USA hiring brief and appended 4 companies.
+V1 researched Accredited Insurance (Grand 007). It found 3 contacts with no verified email and scored 0, so no draft was written.
+$1.05 was reserved against the cap.
+Switched on locally after the owner said yes.
+Notes for later:
+
+The n8n execute CLI cannot use data tables, so test from the editor instead.
+Before any manual Sender or Follow-Up run, check the Outreach sheet, because those runs send real email.
+
   Concord re-test (exec 9627) bypassed the budget gate and was booked into OpenAI Daily
   Spend after the fact, as was the pre-gate discovery test (9621).
